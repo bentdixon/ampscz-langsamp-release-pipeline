@@ -169,14 +169,13 @@ def save_tags(
             label = 'pronoun_possession'
         labels_renamed.append(label)
 
-    # Identify which labels are numeric features (for sum calculation)
     # Exclude: num_sent, word_freq, file_name
     non_feature_labels = {'num_sent', 'word_freq', 'file_name'}
 
     header = [
                  'network', 'language', 'src_subject_id', 'interview_type',
                  'day', 'interview_number', 'transcript_speaker_label', 'speaker_role'
-             ] + labels_renamed[:-3] + ['sum'] + ['num_sent', 'word_freq', 'file_name.txt']
+             ] + labels_renamed[:-3] + ['num_sent', 'word_freq', 'file_name.txt']
 
     # Ensure parent directories exist
     output_file.parent.mkdir(parents=True, exist_ok=True)
@@ -200,14 +199,6 @@ def save_tags(
             except KeyError:
                 language_name = language_code
 
-            # Calculate sum of all feature counts (exclude num_sent, word_freq, file_name)
-            feature_sum = 0
-            for label in labels_original:
-                if label not in non_feature_labels:
-                    val = features[label]
-                    if isinstance(val, (int, float)) and not (isinstance(val, float) and np.isnan(val)):
-                        feature_sum += val
-
             # Build row values (excluding the last 3: num_sent, word_freq, file_name)
             row_values = [str(features[label]) for label in labels_original[:-3]]
 
@@ -219,7 +210,7 @@ def save_tags(
             row = [
                       site, language_name, patient_id, transcript_type,
                       day, session, '', speaker_role_output  # Empty string for transcript_speaker_label placeholder
-                  ] + row_values + [str(feature_sum), num_sent, word_freq, file_name]
+                  ] + row_values + [num_sent, word_freq, file_name]
 
             outfile.write('\t'.join(row) + '\n')
 
@@ -394,13 +385,10 @@ def save_tags_combined(
             label = 'pronoun_possession'
         labels_renamed.append(label)
 
-    # Identify which labels are numeric features (for sum calculation)
-    non_feature_labels = {'num_sent', 'word_freq', 'file_name'}
-
     header = [
                  'network', 'language', 'src_subject_id', 'interview_type',
                  'day', 'interview_number', 'transcript_speaker_label', 'speaker_role'
-             ] + labels_renamed[:-3] + ['sum'] + ['num_sent', 'word_freq', 'file_name.txt']
+             ] + labels_renamed[:-3] + ['num_sent', 'word_freq', 'file_name.txt']
 
     # Ensure parent directories exist
     output_file.parent.mkdir(parents=True, exist_ok=True)
@@ -428,14 +416,6 @@ def save_tags_combined(
                 except KeyError:
                     language_name = language_code
 
-                # Calculate sum of all feature counts
-                feature_sum = 0
-                for label in labels_original:
-                    if label not in non_feature_labels:
-                        val = features[label]
-                        if isinstance(val, (int, float)) and not (isinstance(val, float) and np.isnan(val)):
-                            feature_sum += val
-
                 # Build row values
                 row_values = [str(features[label]) for label in labels_original[:-3]]
 
@@ -447,7 +427,7 @@ def save_tags_combined(
                 row = [
                           site, language_name, patient_id, transcript_type,
                           day, session, '', speaker_role_output
-                      ] + row_values + [str(feature_sum), num_sent, word_freq, file_name]
+                      ] + row_values + [num_sent, word_freq, file_name]
 
                 outfile.write('\t'.join(row) + '\n')
 

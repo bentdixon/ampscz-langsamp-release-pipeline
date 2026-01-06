@@ -80,16 +80,14 @@ def update_tsv_row_with_features(
 
     # Find indices of special columns
     try:
-        sum_idx = header.index('sum')
         num_sent_idx = header.index('num_sent')
         word_freq_idx = header.index('word_freq')
     except ValueError as e:
         print(f"Warning: Missing expected column in header: {e}")
         return row
 
-    # Calculate sum of feature counts
+    # Update feature columns
     non_feature_labels = {'num_sent', 'word_freq', 'file_name'}
-    feature_sum = 0
 
     for col_name, value in tally_dict.items():
         if col_name in non_feature_labels:
@@ -97,14 +95,8 @@ def update_tsv_row_with_features(
         if col_name in header:
             col_idx = header.index(col_name)
             updated_row[col_idx] = str(value)
-            # Add to sum if numeric
-            if isinstance(value, (int, float)):
-                import numpy as np
-                if not (isinstance(value, float) and np.isnan(value)):
-                    feature_sum += value
 
     # Set aggregate statistics
-    updated_row[sum_idx] = str(feature_sum)
     updated_row[num_sent_idx] = str(tally_dict.get('num_sent', ''))
     updated_row[word_freq_idx] = str(tally_dict.get('word_freq', ''))
 

@@ -82,7 +82,6 @@ python cli/tag_grammatical_feats.py \
 - `transcript_speaker_label` - Original speaker label (S1, S2, SP, SI, etc.)
 - `speaker_role` - Participant or Interviewer
 - [Grammatical features] - UPOS tags, dependency relations, morphological features
-- `sum` - Total feature count
 - `num_sent` - Number of sentences
 - `word_freq` - Mean log word frequency
 - `file_name.txt` - Transcript filename
@@ -147,10 +146,6 @@ python cli/fix_interview_labels.py \
 
 **Options:**
 - `--dry-run` - Print changes without applying them
-
-## Supported Languages
-
-English (en), Spanish (es), Mandarin (zh), Korean (ko), Italian (it), Japanese (ja), Danish (da), German (de), French (fr), Cantonese (yue)
 
 ## Quick Start Example
 

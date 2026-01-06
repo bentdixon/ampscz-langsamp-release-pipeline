@@ -377,7 +377,7 @@ def initialize_tsv(
     header = [
         'network', 'language', 'src_subject_id', 'interview_type',
         'day', 'interview_number', 'transcript_speaker_label', 'speaker_role'
-    ] + features + ['sum', 'num_sent', 'word_freq', 'file_name.txt']
+    ] + features + ['num_sent', 'word_freq', 'file_name.txt']
 
     output_tsv.parent.mkdir(parents=True, exist_ok=True)
 
@@ -407,7 +407,7 @@ def initialize_tsv(
                 row = [
                     site, language, patient_id, interview_type,
                     day, session, transcript_speaker_label, 'Participant'
-                ] + [''] * len(features) + ['', '', '', filename]
+                ] + [''] * len(features) + ['', '', filename]
                 writer.writerow(row)
 
             elif roles is not None:
@@ -420,7 +420,7 @@ def initialize_tsv(
                     row = [
                         site, language, patient_id, interview_type,
                         day, session, transcript_speaker_label, speaker_role
-                    ] + [''] * len(features) + ['', '', '', filename]
+                    ] + [''] * len(features) + ['', '', filename]
                     writer.writerow(row)
             else:
                 # Failed to classify: create rows with unknown labels
@@ -429,7 +429,7 @@ def initialize_tsv(
                     row = [
                         site, language, patient_id, interview_type,
                         day, session, '', role
-                    ] + [''] * len(features) + ['', '', '', filename]
+                    ] + [''] * len(features) + ['', '', filename]
                     writer.writerow(row)
 
     console.print(f"[green]Initialized TSV: {output_tsv}[/green]")
