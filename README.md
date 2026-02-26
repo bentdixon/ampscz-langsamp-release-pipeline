@@ -1,6 +1,6 @@
-# NDA Release 4 Pipeline
+# Morphosyntactic Feature Extraction Pipeline 
 
-Transcript processing pipeline for extracting morphosyntactic features from interview transcripts.
+Transcript processing pipeline for extracting morphosyntactic features from interview transcripts, used to prepare features of NDA Data Release 4 for the AMP SCZ project. Designed to work on TranscribeMe! formatted transcripts, but the pipeline can be easily modified to support other formatting. 
 
 ## Prerequisites
 

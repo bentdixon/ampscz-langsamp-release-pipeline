@@ -42,10 +42,6 @@ def read_mismatches(mismatches_path: Path) -> list[dict]:
 def update_filename(original_filename: str, old_type: str, new_type: str) -> str:
     """
     Update filename by replacing interview type.
-
-    Example:
-        update_filename("BI_12345_en_psychs_day0001_session0001.txt", "psychs", "open")
-        -> "BI_12345_en_open_day0001_session0001.txt"
     """
     # Normalize types to lowercase for replacement
     old_type_lower = old_type.lower()
@@ -76,7 +72,6 @@ def move_and_rename_file(
 
     target_path = new_dir / new_filename
 
-    # Move and rename
     shutil.move(str(source_path), str(target_path))
     print(f"  Moved: {old_filename} -> {new_dir.name}/{new_filename}")
 
@@ -115,12 +110,10 @@ def update_main_tsv(
         for row in reader:
             filename = row[filename_col]
 
-            # Update filename if needed
             if filename in filename_updates:
                 row[filename_col] = filename_updates[filename]
                 updated_rows += 1
 
-            # Update interview type if needed
             if filename in interview_type_updates:
                 row[interview_type_col] = interview_type_updates[filename]
 
@@ -146,14 +139,12 @@ def update_split_tsvs(
         filename_col: Name of filename column
         interview_type_col: Name of interview type column
     """
-    # Read all split TSVs
     split_tsvs = {
         'psychs': verified_dir / 'psychs.tsv',
         'open': verified_dir / 'open.tsv',
         'diary': verified_dir / 'diary.tsv',
     }
 
-    # Collect rows by interview type
     rows_by_type = {
         'psychs': [],
         'open': [],
