@@ -1,0 +1,4 @@
+# Using * to enforce strict, must-add-forcefully policy to ensure no leakage 
+*
+.env
+__pycache__
