@@ -2,6 +2,9 @@
 
 Transcript processing pipeline for extracting morphosyntactic features from interview transcripts, used to prepare features of NDA Data Release 4 for the AMP SCZ project. Designed to work on TranscribeMe! formatted transcripts, but the pipeline can be easily modified to support other formatting. 
 
+For audiovisual features, see: https://github.com/dptools/dpinterview?tab=readme-ov-file
+For fluency features, see: https://github.com/dptools/dpfluency
+
 ## Prerequisites
 
 - Python 3.8+
