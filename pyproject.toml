@@ -3,13 +3,14 @@ requires = ["setuptools>=61.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "nda-release-4-pipeline"
-version = "0.1.0"
-description = "Utilities for structuring and parsing transcripts for the AMPSCZ NDA Data Release 4"
+name = "ampscz-langsamp-release-pipeline"
+version = "0.2.0"
+description = "Utilities for structuring and parsing transcripts for the AMPSCZ NDA Data Release 4 and beyond"
 readme = "README.md"
 requires-python = ">=3.8"
 authors = [
-    {name = "Benjamin Dixon"}
+    {name = "Benjamin Dixon"},
+    {name = "Philip Wolff"}
 ]
 
 dependencies = [
@@ -29,4 +30,4 @@ dev = [
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["cli*", "utils*", "features*", "data*", "examples*"]
+include = ["cli*", "utils*", "features*", "data*", "misc*"]
