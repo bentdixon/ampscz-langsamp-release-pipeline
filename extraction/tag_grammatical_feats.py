@@ -23,8 +23,8 @@ import stanza
 from pathlib import Path
 from collections import defaultdict
 
-from utils.clean_files import process_directory as clean_directory
-from features.grammar import (
+from preprocessing.clean_files import process_directory as clean_directory
+from extraction.utils.grammar import (
     build_tag_feat_dict,
     detect_language_for_transcript,
     process_transcript_lines,
@@ -32,15 +32,22 @@ from features.grammar import (
     SUPPORTED_STANZA_LANGUAGES,
     LANG_TO_STANZA,
 )
-from features.frequency import (
+from extraction.utils.frequency import (
     get_corpus_path,
     calculate_frequencies_subtlex,
     build_frequency_dict,
     extract_words_from_transcript,
     calculate_mean_log_frequency,
 )
-from utils.transcripts import Transcript
-from data.langs import Language
+from common.transcripts import Transcript
+from common.langs import Language
+from common.workspace import (
+    Workspace,
+    WorkspaceError,
+    DEFAULT_FEATS_FILE,
+    resolve_input,
+    resolve_output,
+)
 
 
 def read_preliminary_tsv(tsv_path: Path) -> tuple[list[str], list[list[str]]]:
@@ -124,16 +131,18 @@ def main() -> None:
         description="Tag grammatical features for both participant and interviewer.",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter
     )
-    parser.add_argument("--i", type=str, required=True,
-                        help="Input directory containing transcript files")
-    parser.add_argument("--o", type=str, required=True,
-                        help="Output TSV file path")
+    parser.add_argument("--i", type=str, default=None,
+                        help="Input directory containing transcript files (default: organized dir from the current run)")
+    parser.add_argument("--o", type=str, default=None,
+                        help="Output TSV file path (default: <run>/features_complete.tsv)")
     parser.add_argument("--input-tsv", type=str, required=False, default=None,
-                        help="Preliminary TSV to update (optional - if not provided, creates new TSV)")
+                        help="Preliminary TSV to update (default: preliminary TSV from the current run)")
     parser.add_argument("--failed_log", type=str, required=False, default=None,
-                        help="Output CSV file path for failed files log (optional)")
-    parser.add_argument("--feats", type=str, required=True,
-                        help="Path to feature list file (tags_upos_xpos.txt)")
+                        help="Output CSV file path for failed files log (default: <run>/failed.csv)")
+    parser.add_argument("--feats", type=str, default=None,
+                        help=f"Path to feature list file (default: feats from the current run, else {DEFAULT_FEATS_FILE})")
+    parser.add_argument("--workspace", type=str, default=None,
+                        help="Run directory to read defaults from and record outputs to (default: latest run under runs/)")
     parser.add_argument("--word-freq-langs", type=str, required=False, default=None,
                         help="Comma-separated list of language codes to compute word frequencies for (e.g., 'en,es,de')")
     parser.add_argument("--word-freq-dir", type=str, required=False, default=None,
@@ -150,11 +159,34 @@ def main() -> None:
 
     os.environ["CUDA_VISIBLE_DEVICES"] = str(args.gpu)
 
-    input_dir = Path(args.i)
-    output_file = Path(args.o)
-    input_tsv_path = Path(args.input_tsv) if args.input_tsv else None
-    failed_log_path = Path(args.failed_log) if args.failed_log else None
-    feature_list_path = Path(args.feats)
+    try:
+        workspace = Workspace.resolve(args.workspace)
+    except WorkspaceError as e:
+        parser.error(str(e))
+    if workspace:
+        print(f"Run directory: {workspace.run_dir}")
+        text_type = workspace.get("text_type")
+        if text_type:
+            print(f"Text type (from run): {text_type}")
+
+    input_dir = resolve_input(args.i, workspace, "organized_dir", "--i", parser)
+    output_file = resolve_output(args.o, workspace, "features_complete.tsv", "--o", parser)
+    if args.input_tsv:
+        input_tsv_path = Path(args.input_tsv)
+    else:
+        input_tsv_path = workspace.get_path("preliminary_tsv") if workspace else None
+        if input_tsv_path:
+            print(f"Using --input-tsv from workspace: {input_tsv_path}")
+    if args.failed_log:
+        failed_log_path = Path(args.failed_log)
+    else:
+        failed_log_path = workspace.path_for("failed.csv") if workspace else None
+        if failed_log_path:
+            print(f"Defaulting --failed_log into workspace: {failed_log_path}")
+    if args.feats:
+        feature_list_path = Path(args.feats)
+    else:
+        feature_list_path = (workspace.get_path("feats") if workspace else None) or DEFAULT_FEATS_FILE
 
     # Parse word frequency arguments
     word_freq_langs = []
@@ -417,7 +449,7 @@ def main() -> None:
         print("Creating new TSV from scratch...")
 
         # Import the original save function
-        from features.grammar import save_tags_combined
+        from extraction.utils.grammar import save_tags_combined
 
         # Organize results by speaker role
         tally_tags_feat_dict_by_speaker = {
@@ -459,6 +491,10 @@ def main() -> None:
         save_failed_files_log(failed_files, failed_log_path)
     elif failed_files:
         print(f"\nWarning: {len(failed_files)} files failed but no --failed_log path specified.")
+
+    if workspace:
+        workspace.update(features_tsv=output_file, failed_log=failed_log_path)
+        workspace.mark_completed("extraction")
 
     print("\n✓ Processing complete!")
 

@@ -1,175 +1,141 @@
-# Morphosyntactic Feature Extraction Pipeline 
+# Morphosyntactic Feature Extraction Pipeline
 
-Transcript processing pipeline for extracting morphosyntactic features from interview transcripts, used to prepare features of NDA Data Release 4 for the AMP SCZ project. Designed to work on TranscribeMe! formatted transcripts, but the pipeline can be easily modified to support other formatting. 
+Transcript processing pipeline for extracting morphosyntactic features from interview transcripts, used to prepare features of NDA Data Release 4 for the AMP SCZ project. Designed to work on TranscribeMe! formatted transcripts, but the pipeline can be easily modified to support other formatting.
 
-For audiovisual features, see: https://github.com/dptools/dpinterview  
+For audiovisual features, see: https://github.com/dptools/dpinterview
 For fluency features, see: https://github.com/dptools/dpfluency
+
+## Repository Structure
+
+The pipeline is organized by stage, with pre-processing and post-processing cleanly separated from feature extraction. Each directory has its own README with detailed usage.
+
+```
+preprocessing/    Step 0: organize transcripts, LLM speaker-role labeling, initialize TSV
+extraction/       Step 1: Stanza-based morphosyntactic feature extraction, word frequency
+postprocessing/   Steps 2-3: LLM verification of interview labels, corrections, NDA CSV patches
+common/           Shared core: Transcript parsing, language/site-code definitions, run workspaces
+data/             Static data files: feature list, SUBTLEX word frequency corpus
+runs/             Spawned automatically: one timestamped workspace per pipeline run (not tracked)
+```
+
+| Directory | Details |
+| --- | --- |
+| [`preprocessing/`](preprocessing/README.md) | Organizing, labeling, and language identification of raw transcripts |
+| [`extraction/`](extraction/README.md) | Grammatical feature tagging and word-frequency calculation |
+| [`postprocessing/`](postprocessing/README.md) | Interview-label verification and correction, submission CSV patching |
+| [`common/`](common/README.md) | Abstractions shared by all stages |
+| [`data/`](data/README.md) | Required static files |
+
+## Pipeline Overview
+
+1. **Step 0 - Pre-process** (`preprocessing/organize_label_and_init_tsv.py`): organize raw transcripts by language and clinical status, assign PARTICIPANT/INTERVIEWER roles with an LLM, and create a preliminary TSV.
+2. **Step 1 - Extract features** (`extraction/tag_grammatical_feats.py`): process transcripts with Stanza and fill in morphosyntactic feature columns and word frequencies.
+3. **Step 2 - Verify labels** (`postprocessing/verify_interview_labels.py`): verify interview-type labels with an LLM and flag potentially mislabeled files.
+4. **Step 3 - Fix labels** (`postprocessing/fix_interview_labels.py`): move, rename, and re-TSV mislabeled interviews.
+
+## Run Workspaces
+
+Step 0 spawns a timestamped run directory under `runs/` (e.g. `runs/2026-07-09_143000/`) and each later stage updates it, so input/output paths only need to be given once, if at all:
+
+- Each stage's outputs default into the run directory (`organized/`, `preliminary.tsv`, `features_complete.tsv`, `failed.csv`, `verified/`, `mismatches.csv`, `features_corrected.tsv`), and each stage's inputs default to the previous stage's recorded outputs.
+- `--text-type` is set once at Step 0 and tracked through extraction and post-processing.
+- `--feats` defaults to `data/tags_upos_xpos.txt` everywhere.
+- `runs/latest` always points at the most recent run; pass `--workspace runs/<timestamp>` to any stage to operate on an older run instead.
+- The manifest `pipeline_state.json` inside each run directory records settings, output locations, and stage completion times.
+
+Every explicit flag still overrides its default, and passing all paths explicitly works exactly as before. A full pipeline run reduces to:
+
+```bash
+python preprocessing/organize_label_and_init_tsv.py --i ~/data/raw_transcripts --text-type psychs --gpu 0
+python extraction/tag_grammatical_feats.py --gpu 0
+python postprocessing/verify_interview_labels.py --gpu 0,1,2,3
+python postprocessing/fix_interview_labels.py
+```
 
 ## Prerequisites
 
-- Python 3.8+
-- CUDA-capable GPU
-- Required files:
+- [uv](https://docs.astral.sh/uv/) (manages Python and all dependencies; Python 3.10+ is installed automatically if needed)
+- Linux with a CUDA-capable GPU (required to run the pipeline; local development on macOS is supported, but `vllm` is only installed on Linux)
+- Required files (see [`data/`](data/README.md)):
   - `tags_upos_xpos.txt` - Feature list for extraction
   - Word frequency files
 
 ## Installation
 
-```bash
-pip install -e . # Alternatively, `pip install -e . --no-deps' to use pre-existing environment
-```
+This project uses [uv](https://docs.astral.sh/uv/) for environment and dependency management.
 
-## Pipeline Steps
+### 1. Install uv
 
-### Step 0: Organize, Label, and Initialize TSV
-
-Organizes transcripts by language/clinical status, uses LLM to assign PARTICIPANT/INTERVIEWER roles, and creates preliminary TSV.
+On Linux or macOS:
 
 ```bash
-python cli/organize_label_and_init_tsv.py \
-  --i raw_transcripts/ \
-  --o organized_transcripts/ \
-  --tsv preliminary.tsv \
-  --feats tags_upos_xpos.txt \
-  --text-type psychs \
-  --gpu 0
+curl -LsSf https://astral.sh/uv/install.sh | sh
 ```
 
-**Input:**
-- Raw transcripts with speaker labels (S1, S2, SP, SI, etc.)
-
-**Output:**
-- `organized_transcripts/` - Labeled transcripts organized by language/status
-- `preliminary.tsv` - TSV with metadata filled, features empty
-
-**Options:**
-- `--csv clinical_status.csv` - Optional CSV with patient_id and clinical_status columns
-- `--tp 2` - Tensor parallel size (number of GPUs for LLM)
-- `--batch-size 16` - LLM inference batch size
-- `--skip-labeling` - Skip LLM labeling (use existing labels)
-
-### Step 1: Extract Grammatical Features
-
-Processes transcripts with Stanza NLP and fills in morphosyntactic feature columns.
+Alternatively, install with pip or pipx:
 
 ```bash
-python cli/tag_grammatical_feats.py \
-  --i organized_transcripts/ \
-  --input-tsv preliminary.tsv \
-  --o features_complete.tsv \
-  --feats tags_upos_xpos.txt \
-  --gpu 0
+pip install uv
 ```
 
-**Input:**
-- `organized_transcripts/` - Labeled transcripts from Step 0
-- `preliminary.tsv` - TSV from Step 0
+### 2. Install the project
 
-**Output:**
-- `features_complete.tsv` - Complete TSV with all features filled
-
-**Options:**
-- `--word-freq-langs en,es` - Comma-separated list of language codes for word frequency calculation
-- `--word-freq-dir /path/to/subtlex/` - Directory containing SUBTLEX corpus files
-- `--batch_size 400` - Stanza batch size
-- `--slice 100` - Process only N transcripts per language (for testing)
-- `--skip_cleaning` - Skip colon-fixing cleaning step
-
-**Output TSV Columns:**
-- `network` - Site code
-- `language` - Language name (English, Spanish, etc.)
-- `src_subject_id` - Patient ID
-- `interview_type` - psychs, open, or diary
-- `day` - Interview day (e.g., day0001)
-- `interview_number` - Session number (e.g., session0001)
-- `transcript_speaker_label` - Original speaker label (S1, S2, SP, SI, etc.)
-- `speaker_role` - Participant or Interviewer
-- [Grammatical features] - UPOS tags, dependency relations, morphological features
-- `num_sent` - Number of sentences
-- `word_freq` - Mean log word frequency
-- `file_name.txt` - Transcript filename
-
-### Step 2: Verify Interview Labels
-
-Uses LLM to verify interview type labels are correct and identifies potentially mislabeled files.
+From the repository root:
 
 ```bash
-python cli/verify_interview_labels.py \
-  --input features_complete.tsv \
-  --transcripts organized_transcripts/ \
-  --output-dir verified_output/ \
-  --mismatches mismatches.csv \
-  --gpu 0,1,2,3 \
-  --batch-size 16
+uv sync
 ```
 
-**Input:**
-- `features_complete.tsv` - Complete TSV from Step 1
-- `organized_transcripts/` - Transcripts from Step 0
+This creates a `.venv/` virtual environment, installs the exact dependency versions pinned in `uv.lock`, and installs the project itself in editable mode. Development tools (pytest, black, flake8) are included by default; use `uv sync --no-dev` to skip them.
 
-**Output:**
-- `verified_output/` - Flat directory structure:
-  - `psychs/` - PSYCHS interview transcripts
-  - `open/` - OPEN interview transcripts
-  - `diary/` - Diary transcripts
-  - `psychs.tsv` - TSV for PSYCHS interviews
-  - `open.tsv` - TSV for OPEN interviews
-  - `diary.tsv` - TSV for diaries
-- `mismatches.csv` - List of potentially mislabeled files
+Note: `vllm` is declared with a `sys_platform == 'linux'` marker, so it is only installed on Linux. Pipeline steps that use the LLM (Steps 0 and 2) must be run on a Linux machine with a CUDA-capable GPU.
 
-**Options:**
-- `--gpu 0,1,2,3` - Comma-separated GPU IDs for data parallel processing
-- `--batch-size 16` - Batch size per GPU worker
-- `--model openai/gpt-oss-120b` - LLM model to use
-- `--thinking low` - Thinking level hint (low, medium, high)
+### 3. Run commands
 
-### Step 3: Fix Mislabeled Interviews
-
-Corrects mislabeled interviews by moving files, renaming them, and updating TSVs.
+Either prefix commands with `uv run`:
 
 ```bash
-python cli/fix_interview_labels.py \
-  --mismatches mismatches.csv \
-  --main-tsv features_complete.tsv \
-  --verified-dir verified_output/ \
-  --output-tsv features_corrected.tsv
+uv run python preprocessing/organize_label_and_init_tsv.py --help
 ```
 
-**Input:**
-- `mismatches.csv` - Mismatches from Step 2
-- `features_complete.tsv` - Main TSV from Step 1
-- `verified_output/` - Directory from Step 2
+or activate the environment once per shell and use `python` directly:
 
-**Output:**
-- `features_corrected.tsv` - Corrected main TSV
-- Updated `verified_output/`:
-  - Files moved to correct directories
-  - Files renamed with correct interview type
-  - Split TSVs updated
+```bash
+source .venv/bin/activate
+```
 
-**Options:**
-- `--dry-run` - Print changes without applying them
+The `python ...` commands in the examples below assume the environment is active.
 
-## Quick Start Example
+### Installing with pip (alternative)
+
+A standard editable install still works if you prefer to manage the environment yourself:
+
+```bash
+pip install -e . # Alternatively, `pip install -e . --no-deps` to use a pre-existing environment
+```
+
+## Quick Start Example (explicit paths)
+
+The workspace defaults above make most of these flags optional; they are shown here in full for when outputs need to live outside the run directory. Detailed options for each step are documented in the stage READMEs linked above.
 
 ```bash
 # Step 0: Organize and label
-python cli/organize_label_and_init_tsv.py \
+python preprocessing/organize_label_and_init_tsv.py \
   --i ~/data/raw_transcripts \
   --o ~/data/organized \
   --tsv ~/data/preliminary.tsv \
-  --feats tags_upos_xpos.txt \
+  --feats data/tags_upos_xpos.txt \
   --text-type psychs \
   --gpu 0 \
   --tp 2 \
   --batch-size 16
 
 # Step 1: Extract features
-python cli/tag_grammatical_feats.py \
+python extraction/tag_grammatical_feats.py \
   --i ~/data/organized \
   --input-tsv ~/data/preliminary.tsv \
   --o ~/data/features_complete.tsv \
-  --feats tags_upos_xpos.txt \
+  --feats data/tags_upos_xpos.txt \
   --word-freq-langs en,es \
   --word-freq-dir ~/data/subtlex/ \
   --gpu 0 \
@@ -177,7 +143,7 @@ python cli/tag_grammatical_feats.py \
   --failed_log ~/data/failed.csv
 
 # Step 2: Verify interview labels
-python cli/verify_interview_labels.py \
+python postprocessing/verify_interview_labels.py \
   --input ~/data/features_complete.tsv \
   --transcripts ~/data/organized \
   --output-dir ~/data/verified \
@@ -186,7 +152,7 @@ python cli/verify_interview_labels.py \
   --batch-size 16
 
 # Step 3: Fix mislabeled interviews
-python cli/fix_interview_labels.py \
+python postprocessing/fix_interview_labels.py \
   --mismatches ~/data/mismatches.csv \
   --main-tsv ~/data/features_complete.tsv \
   --verified-dir ~/data/verified \

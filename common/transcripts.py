@@ -4,7 +4,7 @@ from enum import Enum
 from functools import cached_property
 from pathlib import Path
 from typing import NamedTuple
-from data.langs import Language, SITE_CODE_TO_LANGUAGES
+from common.langs import Language, SITE_CODE_TO_LANGUAGES
 
 _TIMESTAMP_PATTERN = re.compile(r'(\d{2}:\d{2}:\d{2}\.\d{3})')
 

@@ -11,7 +11,7 @@ This script:
    - Adds rows to correct split TSV
 
 Usage:
-  python cli/fix_interview_labels.py \\
+  python postprocessing/fix_interview_labels.py \\
     --mismatches mismatches.csv \\
     --main-tsv features_complete.tsv \\
     --verified-dir verified_output/ \\
@@ -23,6 +23,8 @@ import shutil
 import argparse
 from pathlib import Path
 from collections import defaultdict
+
+from common.workspace import Workspace, WorkspaceError, resolve_input, resolve_output
 
 
 def read_mismatches(mismatches_path: Path) -> list[dict]:
@@ -198,14 +200,16 @@ def main():
         description="Fix mislabeled interviews based on verification results",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
-    parser.add_argument("--mismatches", type=str, required=True,
-                        help="Mismatches CSV from Step 2")
-    parser.add_argument("--main-tsv", type=str, required=True,
-                        help="Main TSV file (complete features from Step 1)")
-    parser.add_argument("--verified-dir", type=str, required=True,
-                        help="Directory from Step 2 containing organized transcripts and split TSVs")
-    parser.add_argument("--output-tsv", type=str, required=True,
-                        help="Output TSV with corrections applied")
+    parser.add_argument("--mismatches", type=str, default=None,
+                        help="Mismatches CSV from Step 2 (default: mismatches CSV from the current run)")
+    parser.add_argument("--main-tsv", type=str, default=None,
+                        help="Main TSV file (default: features TSV from the current run)")
+    parser.add_argument("--verified-dir", type=str, default=None,
+                        help="Directory from Step 2 (default: verified dir from the current run)")
+    parser.add_argument("--output-tsv", type=str, default=None,
+                        help="Output TSV with corrections applied (default: <run>/features_corrected.tsv)")
+    parser.add_argument("--workspace", type=str, default=None,
+                        help="Run directory to read defaults from and record outputs to (default: latest run under runs/)")
     parser.add_argument("--filename-col", type=str, default="file_name.txt",
                         help="Filename column in TSV")
     parser.add_argument("--interview-type-col", type=str, default="interview_type",
@@ -214,10 +218,17 @@ def main():
                         help="Print changes without applying them")
     args = parser.parse_args()
 
-    mismatches_path = Path(args.mismatches)
-    main_tsv_path = Path(args.main_tsv)
-    verified_dir = Path(args.verified_dir)
-    output_tsv_path = Path(args.output_tsv)
+    try:
+        workspace = Workspace.resolve(args.workspace)
+    except WorkspaceError as e:
+        parser.error(str(e))
+    if workspace:
+        print(f"Run directory: {workspace.run_dir}")
+
+    mismatches_path = resolve_input(args.mismatches, workspace, "mismatches_csv", "--mismatches", parser)
+    main_tsv_path = resolve_input(args.main_tsv, workspace, "features_tsv", "--main-tsv", parser)
+    verified_dir = resolve_input(args.verified_dir, workspace, "verified_dir", "--verified-dir", parser)
+    output_tsv_path = resolve_output(args.output_tsv, workspace, "features_corrected.tsv", "--output-tsv", parser)
 
     # Validate inputs
     if not mismatches_path.exists():
@@ -336,6 +347,10 @@ def main():
         args.filename_col,
         args.interview_type_col,
     )
+
+    if workspace and not args.dry_run:
+        workspace.update(corrected_tsv=output_tsv_path)
+        workspace.mark_completed("correction")
 
     print("\n" + "=" * 60)
     print("CORRECTIONS COMPLETE")

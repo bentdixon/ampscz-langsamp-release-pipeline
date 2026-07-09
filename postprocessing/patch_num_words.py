@@ -10,7 +10,7 @@ cannot be matched on disk, the script exits immediately without processing
 anything.
 
 Usage:
-    python misc/patch_num_words.py \
+    python postprocessing/patch_num_words.py \
         --input-dir  nda4_redo/journals/ \
         --transcripts /path/to/transcripts \
         --output-dir nda4_redo/journals_patched/ \
@@ -31,9 +31,9 @@ import stanza
 from pathlib import Path
 from collections import defaultdict
 
-from utils.transcripts import Transcript
-from features.grammar import detect_language_for_transcript, LANG_TO_STANZA
-from data.langs import Language, SITE_CODE_TO_LANGUAGES
+from common.transcripts import Transcript
+from extraction.utils.grammar import detect_language_for_transcript, LANG_TO_STANZA
+from common.langs import Language, SITE_CODE_TO_LANGUAGES
 
 
 REQUIRED_COLS = {'transcript_file', 'speaker_role', 'num_sent', 'word_freq', 'chrspeech_other_lang'}

@@ -31,9 +31,10 @@ from rich.tree import Tree
 from rich.prompt import Confirm
 
 from vllm import LLM, SamplingParams
-from utils.transcripts import Transcript, ClinicalGroup
-from utils.determine_language import determine_language
-from data.langs import Language, SITE_CODE_TO_LANGUAGES
+from common.transcripts import Transcript, ClinicalGroup
+from common.workspace import Workspace, DEFAULT_FEATS_FILE
+from preprocessing.determine_language import determine_language
+from common.langs import Language, SITE_CODE_TO_LANGUAGES
 
 console = Console()
 
@@ -441,22 +442,37 @@ def main() -> None:
         formatter_class=argparse.ArgumentDefaultsHelpFormatter
     )
     parser.add_argument("--i", type=str, required=True, help="Input directory with unlabeled transcripts")
-    parser.add_argument("--o", type=str, required=True, help="Output directory for organized/labeled transcripts")
-    parser.add_argument("--tsv", type=str, required=True, help="Output TSV file path")
-    parser.add_argument("--feats", type=str, required=True, help="Feature list file (tags_upos_xpos.txt)")
+    parser.add_argument("--o", type=str, default=None,
+                        help="Output directory for organized/labeled transcripts (default: <run>/organized/)")
+    parser.add_argument("--tsv", type=str, default=None,
+                        help="Output TSV file path (default: <run>/preliminary.tsv)")
+    parser.add_argument("--feats", type=str, default=None,
+                        help=f"Feature list file (default: {DEFAULT_FEATS_FILE})")
     parser.add_argument("--csv", type=str, required=False, help="CSV with patient_id and clinical_status columns")
     parser.add_argument("--text-type", type=str, required=True, help="Transcript text type (psychs, open, diaries)")
+    parser.add_argument("--workspace", type=str, default=None,
+                        help="Existing run directory to reuse (default: create a new timestamped directory under runs/)")
     parser.add_argument("--gpu", type=int, required=True, help="GPU device ID")
     parser.add_argument("--tp", type=int, default=1, help="Tensor parallel size (number of GPUs)")
     parser.add_argument("--batch-size", type=int, default=16, help="Batch size for LLM inference")
     parser.add_argument("--skip-labeling", action="store_true", help="Skip LLM labeling (use existing labels)")
     args = parser.parse_args()
 
+    workspace = Workspace(args.workspace) if args.workspace else Workspace.create()
+    console.print(f"[bold]Run directory: {workspace.run_dir}[/bold]")
+
     input_dir = Path(args.i)
-    output_dir = Path(args.o)
-    output_tsv = Path(args.tsv)
-    feature_file = Path(args.feats)
+    output_dir = Path(args.o) if args.o else workspace.path_for("organized")
+    output_tsv = Path(args.tsv) if args.tsv else workspace.path_for("preliminary.tsv")
+    feature_file = Path(args.feats) if args.feats else DEFAULT_FEATS_FILE
     text_type = args.text_type
+
+    workspace.update(
+        text_type=text_type,
+        feats=feature_file,
+        organized_dir=output_dir,
+        preliminary_tsv=output_tsv,
+    )
 
     if not input_dir.exists():
         console.print(f"[red]Error: Input directory {input_dir} does not exist[/red]")
@@ -543,7 +559,10 @@ def main() -> None:
     console.print(f"\n[bold]Initializing TSV with metadata[/bold]")
     initialize_tsv(transcripts_with_roles, output_tsv, feature_file)
 
+    workspace.mark_completed("preprocessing")
+
     console.print(f"\n[green]✓ Pipeline complete![/green]")
+    console.print(f"  Run directory: {workspace.run_dir}")
     console.print(f"  Organized transcripts: {output_dir}")
     console.print(f"  Preliminary TSV: {output_tsv}")
     console.print(f"\nNext step: Run tag_grammatical_feats.py to fill feature columns")

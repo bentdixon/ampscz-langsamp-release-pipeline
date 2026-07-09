@@ -9,7 +9,7 @@ This script:
 5. Outputs list of potentially mislabeled files
 
 Usage:
-  python cli/verify_interview_labels.py \\
+  python postprocessing/verify_interview_labels.py \\
     --input features_complete.tsv \\
     --transcripts organized_transcripts/ \\
     --output-dir verified_output/ \\
@@ -28,13 +28,14 @@ import argparse
 from pathlib import Path
 from multiprocessing import Process, Queue
 
-# Import verification logic from utils
-from utils.verify_interview_types import (
+# Import verification logic from postprocessing
+from postprocessing.verify_interview_types import (
     build_file_lookup,
     is_diary,
     normalize_interview_type,
     worker_process,
 )
+from common.workspace import Workspace, WorkspaceError, resolve_input, resolve_output
 
 
 def split_tsv_by_interview_type(
@@ -223,14 +224,16 @@ def main():
         description="Verify interview type labels using LLM",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
-    parser.add_argument("--input", type=str, required=True,
-                        help="Input features TSV (complete from Step 1)")
-    parser.add_argument("--transcripts", type=str, required=True,
-                        help="Transcript directory")
-    parser.add_argument("--output-dir", type=str, required=True,
-                        help="Output directory for organized transcripts and split TSVs")
-    parser.add_argument("--mismatches", type=str, required=True,
-                        help="Output CSV for mismatched labels")
+    parser.add_argument("--input", type=str, default=None,
+                        help="Input features TSV (default: features TSV from the current run)")
+    parser.add_argument("--transcripts", type=str, default=None,
+                        help="Transcript directory (default: organized dir from the current run)")
+    parser.add_argument("--output-dir", type=str, default=None,
+                        help="Output directory for organized transcripts and split TSVs (default: <run>/verified/)")
+    parser.add_argument("--mismatches", type=str, default=None,
+                        help="Output CSV for mismatched labels (default: <run>/mismatches.csv)")
+    parser.add_argument("--workspace", type=str, default=None,
+                        help="Run directory to read defaults from and record outputs to (default: latest run under runs/)")
     parser.add_argument("--filename-col", type=str, default="file_name.txt",
                         help="Filename column in TSV")
     parser.add_argument("--interview-type-col", type=str, default="interview_type",
@@ -247,10 +250,20 @@ def main():
                         help="Model name")
     args = parser.parse_args()
 
-    input_tsv = Path(args.input)
-    transcript_dir = Path(args.transcripts)
-    output_dir = Path(args.output_dir)
-    mismatches_path = Path(args.mismatches)
+    try:
+        workspace = Workspace.resolve(args.workspace)
+    except WorkspaceError as e:
+        parser.error(str(e))
+    if workspace:
+        print(f"Run directory: {workspace.run_dir}")
+        text_type = workspace.get("text_type")
+        if text_type:
+            print(f"Text type (from run): {text_type}")
+
+    input_tsv = resolve_input(args.input, workspace, "features_tsv", "--input", parser)
+    transcript_dir = resolve_input(args.transcripts, workspace, "organized_dir", "--transcripts", parser)
+    output_dir = resolve_output(args.output_dir, workspace, "verified", "--output-dir", parser)
+    mismatches_path = resolve_output(args.mismatches, workspace, "mismatches.csv", "--mismatches", parser)
 
     if not input_tsv.exists():
         print(f"Error: Input TSV not found: {input_tsv}")
@@ -341,6 +354,10 @@ def main():
         writer = csv.DictWriter(f, fieldnames=['row_index', 'filename', 'expected', 'predicted', 'reason'])
         writer.writeheader()
         writer.writerows(all_mismatches + all_parse_failures)
+
+    if workspace:
+        workspace.update(verified_dir=output_dir, mismatches_csv=mismatches_path)
+        workspace.mark_completed("verification")
 
     # Print summary
     print("\n" + "=" * 60)

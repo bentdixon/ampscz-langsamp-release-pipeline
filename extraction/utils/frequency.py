@@ -13,8 +13,8 @@ import polars as pl
 from pathlib import Path
 from typing import Optional
 
-from utils.transcripts import Transcript, ClinicalGroup
-from data.langs import Language
+from common.transcripts import Transcript, ClinicalGroup
+from common.langs import Language
 
 
 # Language to corpus filename mapping

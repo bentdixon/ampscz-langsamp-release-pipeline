@@ -24,8 +24,8 @@ from pathlib import Path
 from typing import Optional
 from collections import defaultdict
 
-from utils.transcripts import Transcript, ClinicalGroup
-from data.langs import Language
+from common.transcripts import Transcript, ClinicalGroup
+from common.langs import Language
 
 # Languages with Stanza support
 SUPPORTED_STANZA_LANGUAGES = {'zh', 'es', 'en', 'ko', 'it', 'ja', 'da', 'de', 'fr', 'yue'}
