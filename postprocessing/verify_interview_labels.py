@@ -84,7 +84,7 @@ def split_tsv_by_interview_type(
             writer.writeheader()
             writer.writerows(rows)
 
-    print(f"\nSplit TSV into:")
+    print("\nSplit TSV into:")
     print(f"  {psychs_tsv}: {len(psychs_rows)} rows")
     print(f"  {open_tsv}: {len(open_rows)} rows")
     print(f"  {diary_tsv}: {len(diary_rows)} rows")
@@ -370,12 +370,12 @@ def main():
     print(f"Accuracy: {total_matched / total_processed * 100:.1f}%")
     print(f"\nMismatches saved to: {mismatches_path}")
     print(f"Organized directory: {output_dir}")
-    print(f"  - psychs/")
-    print(f"  - open/")
-    print(f"  - diary/")
-    print(f"  - psychs.tsv")
-    print(f"  - open.tsv")
-    print(f"  - diary.tsv")
+    print("  - psychs/")
+    print("  - open/")
+    print("  - diary/")
+    print("  - psychs.tsv")
+    print("  - open.tsv")
+    print("  - diary.tsv")
 
 
 if __name__ == "__main__":

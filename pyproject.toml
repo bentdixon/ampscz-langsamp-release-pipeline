@@ -23,11 +23,25 @@ dev = [
     "pytest",
     "black",
     "flake8",
+    "ruff>=0.15.20",
 ]
 
 [build-system]
 requires = ["setuptools>=64", "wheel"]
 build-backend = "setuptools.build_meta"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+# The repository .gitignore is "*" (force-add policy), which would otherwise
+# hide every file from ruff
+respect-gitignore = false
+extend-exclude = ["Delete", "runs", ".venv"]
+line-length = 120
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F", "W"]
 
 [tool.setuptools.packages.find]
 where = ["."]

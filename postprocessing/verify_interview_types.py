@@ -7,7 +7,6 @@ import os
 
 os.environ['CUDA_DEVICE_ORDER'] = 'PCI_BUS_ID'
 
-import sys
 import csv
 import re
 import argparse
@@ -131,9 +130,9 @@ def worker_process(
 The PSYCHS interviews typically:
 - Focuses on clinical symptoms such as anxiety, depression, hallucinations, paranoia, etc.
 - Has a linear progression
-- May contain some open-ended questions, but will have questions like "Do you ever think that something is strange or not right?" or "Has your experience of time seemed to change?" and then ask about duration frequency. This is their defining feature. If these appear only once or twice, it is a PSYCHS. 
-- Will use phrases like "How often has this occurred in the last month?" or "How often does this happen?" - ANY reference to duration or frequency is almost always in a PSYCHS. Be careful to find these instances. 
-- A PSYCHS is not an OPEN just because a participant speaks about their personal life at length. 
+- May contain some open-ended questions, but will have questions like "Do you ever think that something is strange or not right?" or "Has your experience of time seemed to change?" and then ask about duration frequency. This is their defining feature. If these appear only once or twice, it is a PSYCHS.
+- Will use phrases like "How often has this occurred in the last month?" or "How often does this happen?" - ANY reference to duration or frequency is almost always in a PSYCHS. Be careful to find these instances.
+- A PSYCHS is not an OPEN just because a participant speaks about their personal life at length.
 
 The OPEN interviews typically:
 - Asks questions about the participant's life in a freely flowing format
@@ -383,7 +382,7 @@ def main():
     # Count unique files (mismatches list both PARTICIPANT and INTERVIEWER rows)
     unique_files = len(set(item["filename"] for item in all_issues))
 
-    print(f"\nResults:")
+    print("\nResults:")
     print(f"  Total files processed: {total_processed}")
     print(f"  Matched: {total_matched}")
     print(f"  Mismatched files: {len(all_mismatches) // 2 if all_mismatches else 0} (unique)")

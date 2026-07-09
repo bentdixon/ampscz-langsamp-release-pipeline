@@ -166,7 +166,7 @@ def main():
         if (len(copied_files)) % 1000 == 0:
             print(f"Copied {len(copied_files)} files...")
 
-    print(f"\nSummary:")
+    print("\nSummary:")
     print(f"  Copied to psychs/: {copied_psychs}")
     print(f"  Copied to diary/: {copied_diary}")
     print(f"  Copied to open/: {copied_open}")

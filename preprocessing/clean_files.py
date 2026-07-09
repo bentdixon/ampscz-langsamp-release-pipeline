@@ -63,7 +63,7 @@ def process_directory(directory: Path, dry_run: bool = False) -> None:
                 with open(filepath, 'w', encoding='utf-8') as f:
                     f.write(fixed_content)
 
-    print(f"\nSummary:")
+    print("\nSummary:")
     print(f"  Files scanned: {total_files}")
     print(f"  Files {'needing' if dry_run else 'modified'}: {files_modified}")
     print(f"  Total fixes {'needed' if dry_run else 'applied'}: {total_fixes}")

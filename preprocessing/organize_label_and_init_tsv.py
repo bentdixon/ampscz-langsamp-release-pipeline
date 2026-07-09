@@ -23,12 +23,9 @@ if '--gpu' in sys.argv:
 
 import re
 import csv
-import shutil
 import argparse
 from pathlib import Path
 from rich.console import Console
-from rich.tree import Tree
-from rich.prompt import Confirm
 
 from vllm import LLM, SamplingParams
 from common.transcripts import Transcript, ClinicalGroup
@@ -508,7 +505,7 @@ def main() -> None:
     diaries = [t for t in transcripts if is_diary(t.full_path)]
     interviews = [t for t in transcripts if not is_diary(t.full_path)]
 
-    console.print(f"\nCategorized:")
+    console.print("\nCategorized:")
     console.print(f"  Interviews: {len(interviews)}")
     console.print(f"  Diaries: {len(diaries)}")
 
@@ -556,16 +553,16 @@ def main() -> None:
         console.print(f"  Wrote: {output_path.relative_to(output_dir)}")
 
     # Initialize TSV
-    console.print(f"\n[bold]Initializing TSV with metadata[/bold]")
+    console.print("\n[bold]Initializing TSV with metadata[/bold]")
     initialize_tsv(transcripts_with_roles, output_tsv, feature_file)
 
     workspace.mark_completed("preprocessing")
 
-    console.print(f"\n[green]✓ Pipeline complete![/green]")
+    console.print("\n[green]✓ Pipeline complete![/green]")
     console.print(f"  Run directory: {workspace.run_dir}")
     console.print(f"  Organized transcripts: {output_dir}")
     console.print(f"  Preliminary TSV: {output_tsv}")
-    console.print(f"\nNext step: Run tag_grammatical_feats.py to fill feature columns")
+    console.print("\nNext step: Run tag_grammatical_feats.py to fill feature columns")
 
 
 if __name__ == "__main__":

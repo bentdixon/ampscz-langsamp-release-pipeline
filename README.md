@@ -114,6 +114,21 @@ A standard editable install still works if you prefer to manage the environment 
 pip install -e . # Alternatively, `pip install -e . --no-deps` to use a pre-existing environment
 ```
 
+## Testing
+
+Run the full test suite with:
+
+```bash
+uv run pytest
+```
+
+The suite covers four areas, all runnable on machines without a GPU (the vLLM and Stanza model layers are stubbed with deterministic fakes):
+
+- **Compilation** (`tests/test_compilation.py`) - every Python file must byte-compile
+- **Style** (`tests/test_style.py`) - `ruff check` must pass with the configuration in `pyproject.toml` (also runnable directly: `uv run ruff check .`)
+- **Pipeline pass-through** (`tests/test_pipeline_mock.py`) - synthetic transcripts are pushed through Steps 0-3 end to end, asserting organized output layout, TSV contents, workspace chaining, failed-log handling, and mislabel correction
+- **Unit tests** (`tests/test_workspace.py`, `tests/test_units.py`) - run-workspace lifecycle, transcript/filename parsing, colon-fixing cleaner, feature tallying, word-frequency helpers, and post-processing label utilities
+
 ## Quick Start Example (explicit paths)
 
 The workspace defaults above make most of these flags optional; they are shown here in full for when outputs need to live outside the run directory. Detailed options for each step are documented in the stage READMEs linked above.

@@ -16,7 +16,6 @@ import os
 os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
 
 import csv
-import math
 import argparse
 import numpy as np
 import stanza
@@ -24,7 +23,7 @@ from pathlib import Path
 from typing import Optional
 from collections import defaultdict
 
-from common.transcripts import Transcript, ClinicalGroup
+from common.transcripts import Transcript
 from common.langs import Language
 
 # Languages with Stanza support
@@ -89,7 +88,7 @@ def detect_language_for_transcript(transcript: Transcript, langid_pipeline) -> s
     sample_text = ' '.join([line.text for line in sample_lines if line.text.strip()])
 
     if not sample_text.strip():
-        print(f"  No text found for language detection, defaulting to 'zh'")
+        print("  No text found for language detection, defaulting to 'zh'")
         return 'zh'
 
     doc = langid_pipeline(sample_text)
@@ -168,9 +167,6 @@ def save_tags(
         elif label == 'Yes':
             label = 'pronoun_possession'
         labels_renamed.append(label)
-
-    # Exclude: num_sent, num_words, word_freq, file_name
-    non_feature_labels = {'num_sent', 'num_words', 'word_freq', 'file_name'}
 
     header = [
                  'network', 'language', 'src_subject_id', 'interview_type',
@@ -304,21 +300,11 @@ def process_transcript_lines(
                 'filepath': str(transcript.full_path),
                 'language': lang_code,
                 'reason': 'empty_output',
-                'error_message': f"Extracted 0 sentences and 0 words"
+                'error_message': "Extracted 0 sentences and 0 words"
             }
 
         # Use provided word frequency or set to NaN
         mean_word_freq = word_freq if word_freq is not None else np.nan
-
-        # Build unique key for this transcript
-        key = '_'.join([
-            transcript.site or 'UNKNOWN',
-            transcript.patient_id or 'UNKNOWN',
-            transcript.language.name if transcript.language else 'UNKNOWN',
-            transcript.transcript_type or 'UNKNOWN',
-            transcript.day or 'UNKNOWN',
-            transcript.session or 'UNKNOWN'
-        ])
 
         freq_statistics = {
             'num_sent': num_sentences,
@@ -608,18 +594,17 @@ def main() -> None:
                                 mood, tense, verbform, poss, ntype
                             ])
 
-                            word_freq_list = determine_freqs(word, wordfreqs, word_freq_list)
                             num_words += 1
 
                 # Check if processing returned nothing
                 if num_words == 0 or num_sentences == 0:
-                    print(f"  No words/sentences extracted, skipping.")
+                    print("  No words/sentences extracted, skipping.")
                     failed_files.append({
                         'filename': str(transcript.filename),
                         'filepath': str(transcript.full_path),
                         'language': lang_code,
                         'reason': 'empty_output',
-                        'error_message': f"Extracted 0 sentences and 0 words"
+                        'error_message': "Extracted 0 sentences and 0 words"
                     })
                     continue
 

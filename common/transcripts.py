@@ -154,12 +154,14 @@ class Transcript:
             return None
 
     def _get_language(self) -> Language:
-        try:
-            for parent in self.full_path.parents:
-                for lang in Language:
-                    if f"Language.{lang.name}" == parent.name:
-                        return lang
-            return Language.UNKNOWN
-        except IndexError as e:
-            print(f"Error: {e}\nTranscript: {self.filename}")
-            return Language.UNKNOWN
+        # Organized trees name the language directory either "Language.en"
+        # (legacy) or plain "en" (written by preprocessing Step 0); accept both.
+        # The bare form must not match UNKNOWN, which collides with the
+        # ClinicalGroup.UNKNOWN directory name.
+        for parent in self.full_path.parents:
+            for lang in Language:
+                if parent.name == f"Language.{lang.name}":
+                    return lang
+                if lang is not Language.UNKNOWN and parent.name == lang.name:
+                    return lang
+        return Language.UNKNOWN

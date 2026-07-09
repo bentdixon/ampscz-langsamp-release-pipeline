@@ -22,7 +22,6 @@ import csv
 import shutil
 import argparse
 from pathlib import Path
-from collections import defaultdict
 
 from common.workspace import Workspace, WorkspaceError, resolve_input, resolve_output
 
@@ -280,7 +279,7 @@ def main():
         interview_type_updates[filename] = (old_type, new_type)
 
     # Print summary
-    print(f"\nWill update:")
+    print("\nWill update:")
     print(f"  Filenames: {len(filename_updates)}")
     print(f"  Interview types: {len(interview_type_updates)}")
 
@@ -357,9 +356,9 @@ def main():
     print("=" * 60)
     print(f"Updated main TSV: {output_tsv_path}")
     print(f"Updated split TSVs in: {verified_dir}")
-    print(f"  - psychs.tsv")
-    print(f"  - open.tsv")
-    print(f"  - diary.tsv")
+    print("  - psychs.tsv")
+    print("  - open.tsv")
+    print("  - diary.tsv")
 
 
 if __name__ == "__main__":

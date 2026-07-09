@@ -372,7 +372,7 @@ def main() -> None:
             freq_dict = freq_dicts_by_lang.get(lang_code)
 
             # Process participant lines
-            print(f"  Processing PARTICIPANT lines...")
+            print("  Processing PARTICIPANT lines...")
 
             # Calculate word frequency for participant if available
             participant_word_freq = None
@@ -396,7 +396,7 @@ def main() -> None:
 
             # Process interviewer lines (skip for diaries)
             if not is_diary:
-                print(f"  Processing INTERVIEWER lines...")
+                print("  Processing INTERVIEWER lines...")
 
                 # Calculate word frequency for interviewer if available
                 interviewer_word_freq = None
@@ -418,7 +418,7 @@ def main() -> None:
                     failed_files.append(error_dict)
                     print(f"    Interviewer: Failed - {error_dict['reason']}")
             else:
-                print(f"  Skipping INTERVIEWER (diary file)")
+                print("  Skipping INTERVIEWER (diary file)")
 
         # Free memory before loading next language pipeline
         del nlp
