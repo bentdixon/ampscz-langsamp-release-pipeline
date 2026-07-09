@@ -1,5 +1,5 @@
 """
-Mock pass-through of transcripts across the entire pipeline (Steps 0-3).
+Mock pass-through of transcripts across the entire pipeline (Steps 0-2).
 
 The heavy ML layers are replaced with deterministic fakes (see conftest for
 the vllm and language-identification stubs; stanza's Pipeline is faked
@@ -180,12 +180,12 @@ def test_full_pipeline_pass_through(tmp_runs, tmp_path, monkeypatch):
     failed_rows = list(csv.DictReader(open(failed_log, encoding="utf-8")))
     assert any(DIARY in r["filename"] for r in failed_rows)
 
-    # ---- Step 2: verify interview labels (mock LLM verdicts) -------------
-    import postprocessing.verify_interview_labels as step2
+    # ---- Step 2: verify labels (mock LLM verdicts), then fix -------------
+    import postprocessing.verify_and_fix_interview_labels as step2
 
     monkeypatch.setattr(step2, "Process", ImmediateProcess)
     monkeypatch.setattr(step2, "worker_process", fake_worker_process)
-    monkeypatch.setattr(sys, "argv", ["verify_interview_labels.py", "--gpu", "0"])
+    monkeypatch.setattr(sys, "argv", ["verify_and_fix_interview_labels.py", "--gpu", "0"])
     step2.main()
 
     ws = Workspace.load_latest()
@@ -195,7 +195,6 @@ def test_full_pipeline_pass_through(tmp_runs, tmp_path, monkeypatch):
     assert "verification" in ws.get("completed")
 
     assert (verified_dir / "psychs" / INTERVIEW_OK).exists()
-    assert (verified_dir / "psychs" / INTERVIEW_MISLABELED).exists()
     assert (verified_dir / "diary" / DIARY).exists()
 
     mismatch_rows = list(csv.DictReader(open(mismatches_csv, encoding="utf-8")))
@@ -203,13 +202,7 @@ def test_full_pipeline_pass_through(tmp_runs, tmp_path, monkeypatch):
     assert mismatch_rows[0]["filename"] == INTERVIEW_MISLABELED
     assert mismatch_rows[0]["predicted"] == "OPEN"
 
-    # ---- Step 3: fix mislabeled interviews --------------------------------
-    import postprocessing.fix_interview_labels as step3
-
-    monkeypatch.setattr(sys, "argv", ["fix_interview_labels.py"])
-    step3.main()
-
-    ws = Workspace.load_latest()
+    # ---- Fix phase results (applied in the same invocation) --------------
     corrected_tsv = ws.get_path("corrected_tsv")
     assert corrected_tsv == ws.run_dir / "features_corrected.tsv"
     assert "correction" in ws.get("completed")
@@ -234,9 +227,9 @@ def test_full_pipeline_pass_through(tmp_runs, tmp_path, monkeypatch):
     assert any(r["file_name.txt"] == renamed for r in open_rows)
 
 
-def test_explicit_paths_still_work_without_workspace(tmp_runs, tmp_path, monkeypatch):
-    """Step 3 with fully explicit arguments must not require a run directory."""
-    import postprocessing.fix_interview_labels as step3
+def test_fix_only_with_explicit_paths_works_without_workspace(tmp_runs, tmp_path, monkeypatch):
+    """--fix-only with fully explicit arguments must not require a run directory."""
+    import postprocessing.verify_and_fix_interview_labels as step2
 
     mismatches = tmp_path / "mismatches.csv"
     mismatches.write_text(
@@ -248,10 +241,29 @@ def test_explicit_paths_still_work_without_workspace(tmp_runs, tmp_path, monkeyp
     verified.mkdir()
 
     monkeypatch.setattr(sys, "argv", [
-        "fix_interview_labels.py",
+        "verify_and_fix_interview_labels.py",
+        "--fix-only",
         "--mismatches", str(mismatches),
-        "--main-tsv", str(main_tsv),
-        "--verified-dir", str(verified),
+        "--input", str(main_tsv),
+        "--output-dir", str(verified),
         "--output-tsv", str(tmp_path / "out.tsv"),
     ])
-    step3.main()  # no mismatches to fix; must exit cleanly without a workspace
+    step2.main()  # no mismatches to fix; must exit cleanly without a workspace
+
+
+def test_phase_flag_validation(tmp_runs, monkeypatch):
+    """Contradictory or incomplete phase flags must fail fast."""
+    import pytest
+
+    import postprocessing.verify_and_fix_interview_labels as step2
+
+    monkeypatch.setattr(sys, "argv", [
+        "verify_and_fix_interview_labels.py", "--verify-only", "--fix-only",
+    ])
+    with pytest.raises(SystemExit):
+        step2.main()
+
+    # Verification requires a GPU argument
+    monkeypatch.setattr(sys, "argv", ["verify_and_fix_interview_labels.py"])
+    with pytest.raises(SystemExit):
+        step2.main()

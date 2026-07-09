@@ -7,7 +7,7 @@ from common.transcripts import ClinicalGroup, Transcript
 from preprocessing.clean_files import fix_missing_colons
 from extraction.utils.frequency import calculate_mean_log_frequency, get_corpus_path
 from extraction.utils.grammar import build_tag_feat_dict, extract_feature, fill_tag_feat_slots
-from postprocessing.fix_interview_labels import read_mismatches, update_filename
+from postprocessing.verify_and_fix_interview_labels import read_mismatches, update_filename
 from postprocessing.verify_interview_types import (
     is_diary,
     normalize_interview_type,

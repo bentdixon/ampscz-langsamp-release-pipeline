@@ -1,18 +1,18 @@
 # Morphosyntactic Feature Extraction Pipeline
 
-Transcript processing pipeline for extracting morphosyntactic features from interview transcripts, used to prepare features of NDA Data Release 4 for the AMP SCZ project. Designed to work on TranscribeMe! formatted transcripts, but the pipeline can be easily modified to support other formatting.
+Linguistic feature extraction pipeline for the  NDA Data Release 4 for the AMP SCZ project, and beyond. Designed to work on TranscribeMe! formatted transcripts, but the pipeline can be modified to support other formatting.
 
-For audiovisual features, see: https://github.com/dptools/dpinterview
+For audiovisual features, see: https://github.com/dptools/dpinterview  
 For fluency features, see: https://github.com/dptools/dpfluency
 
-## Repository Structure
+##  Overview
 
-The pipeline is organized by stage, with pre-processing and post-processing cleanly separated from feature extraction. Each directory has its own README with detailed usage.
+The pipeline is organized by stage (pre-processing, feature extraction, and post-processing). Each directory has its own README with detailed usage.
 
 ```
 preprocessing/    Step 0: organize transcripts, LLM speaker-role labeling, initialize TSV
 extraction/       Step 1: Stanza-based morphosyntactic feature extraction, word frequency
-postprocessing/   Steps 2-3: LLM verification of interview labels, corrections, NDA CSV patches
+postprocessing/   Step 2: LLM verification of interview labels + corrections, NDA CSV patches
 common/           Shared core: Transcript parsing, language/site-code definitions, run workspaces
 data/             Static data files: feature list, SUBTLEX word frequency corpus
 runs/             Spawned automatically: one timestamped workspace per pipeline run (not tracked)
@@ -26,12 +26,10 @@ runs/             Spawned automatically: one timestamped workspace per pipeline 
 | [`common/`](common/README.md) | Abstractions shared by all stages |
 | [`data/`](data/README.md) | Required static files |
 
-## Pipeline Overview
 
 1. **Step 0 - Pre-process** (`preprocessing/organize_label_and_init_tsv.py`): organize raw transcripts by language and clinical status, assign PARTICIPANT/INTERVIEWER roles with an LLM, and create a preliminary TSV.
 2. **Step 1 - Extract features** (`extraction/tag_grammatical_feats.py`): process transcripts with Stanza and fill in morphosyntactic feature columns and word frequencies.
-3. **Step 2 - Verify labels** (`postprocessing/verify_interview_labels.py`): verify interview-type labels with an LLM and flag potentially mislabeled files.
-4. **Step 3 - Fix labels** (`postprocessing/fix_interview_labels.py`): move, rename, and re-TSV mislabeled interviews.
+3. **Step 2 - Verify and fix labels** (`postprocessing/verify_and_fix_interview_labels.py`): verify interview-type labels with an LLM, then move, rename, and re-TSV the mislabeled interviews it finds (`--verify-only`/`--fix-only` split the phases for manual review of the mismatches CSV).
 
 ## Run Workspaces
 
@@ -48,8 +46,7 @@ Every explicit flag still overrides its default, and passing all paths explicitl
 ```bash
 python preprocessing/organize_label_and_init_tsv.py --i ~/data/raw_transcripts --text-type psychs --gpu 0
 python extraction/tag_grammatical_feats.py --gpu 0
-python postprocessing/verify_interview_labels.py --gpu 0,1,2,3
-python postprocessing/fix_interview_labels.py
+python postprocessing/verify_and_fix_interview_labels.py --gpu 0,1,2,3
 ```
 
 ## Prerequisites
@@ -126,7 +123,7 @@ The suite covers four areas, all runnable on machines without a GPU (the vLLM an
 
 - **Compilation** (`tests/test_compilation.py`) - every Python file must byte-compile
 - **Style** (`tests/test_style.py`) - `ruff check` must pass with the configuration in `pyproject.toml` (also runnable directly: `uv run ruff check .`)
-- **Pipeline pass-through** (`tests/test_pipeline_mock.py`) - synthetic transcripts are pushed through Steps 0-3 end to end, asserting organized output layout, TSV contents, workspace chaining, failed-log handling, and mislabel correction
+- **Pipeline pass-through** (`tests/test_pipeline_mock.py`) - synthetic transcripts are pushed through Steps 0-2 end to end, asserting organized output layout, TSV contents, workspace chaining, failed-log handling, and mislabel correction
 - **Unit tests** (`tests/test_workspace.py`, `tests/test_units.py`) - run-workspace lifecycle, transcript/filename parsing, colon-fixing cleaner, feature tallying, word-frequency helpers, and post-processing label utilities
 
 ## Quick Start Example (explicit paths)
@@ -157,19 +154,13 @@ python extraction/tag_grammatical_feats.py \
   --batch_size 400 \
   --failed_log ~/data/failed.csv
 
-# Step 2: Verify interview labels
-python postprocessing/verify_interview_labels.py \
+# Step 2: Verify interview labels and fix mislabeled interviews
+python postprocessing/verify_and_fix_interview_labels.py \
   --input ~/data/features_complete.tsv \
   --transcripts ~/data/organized \
   --output-dir ~/data/verified \
   --mismatches ~/data/mismatches.csv \
+  --output-tsv ~/data/features_final.tsv \
   --gpu 0,1,2,3 \
   --batch-size 16
-
-# Step 3: Fix mislabeled interviews
-python postprocessing/fix_interview_labels.py \
-  --mismatches ~/data/mismatches.csv \
-  --main-tsv ~/data/features_complete.tsv \
-  --verified-dir ~/data/verified \
-  --output-tsv ~/data/features_final.tsv
 ```
