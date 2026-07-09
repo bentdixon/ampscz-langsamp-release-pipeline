@@ -5,8 +5,18 @@ from pathlib import Path
 from common.langs import Language, SITE_CODE_TO_LANGUAGES
 from common.transcripts import ClinicalGroup, Transcript
 from preprocessing.clean_files import fix_missing_colons
-from extraction.utils.frequency import calculate_mean_log_frequency, get_corpus_path
+from extraction.utils.frequency import (
+    DISTRIBUTION_STATS,
+    get_corpus_path,
+    get_transcript_word_frequency,
+)
 from extraction.utils.grammar import build_tag_feat_dict, extract_feature, fill_tag_feat_slots
+from extraction.utils.pragmatics import (
+    SPECIFICITY_COLUMNS,
+    WN_MAX_DEPTH,
+    get_transcript_specificity,
+)
+from extraction.tag_pragmatic_feats import ensure_tsv_columns, update_row_with_stats
 from postprocessing.verify_and_fix_interview_labels import read_mismatches, update_filename
 from postprocessing.verify_interview_types import (
     is_diary,
@@ -149,21 +159,33 @@ def test_fill_tag_feat_slots_counts_tags_and_merges_statistics():
 # extraction.utils.frequency
 # ---------------------------------------------------------------------------
 
-def test_calculate_mean_log_frequency():
-    freq_dict = {"hello": 2.0, "world": 4.0}
-    mean, found, missing = calculate_mean_log_frequency(
-        ["hello", "world", "zzznotaword"], freq_dict
+def test_get_transcript_word_frequency_statistics(tmp_runs, tmp_path):
+    path = _write_transcript(
+        tmp_path / INTERVIEW_NAME,
+        "PARTICIPANT: 00:00:01.000 hello world again\n",
     )
-    assert mean == pytest.approx(3.0)
-    assert found == 2
-    assert missing == 1
+    freq_dict = {"hello": 2.0, "world": 4.0, "again": 3.0}
+    stats = get_transcript_word_frequency(path, freq_dict, speaker_role="PARTICIPANT")
+    assert stats is not None
+    # Step 0's TSV header (word_freq_<stat> columns) is derived from this list
+    assert stats.columns == DISTRIBUTION_STATS
+    assert stats["n_words"][0] == 3
+    assert stats["mean"][0] == pytest.approx(3.0)
+    assert stats["median"][0] == pytest.approx(3.0)
+    assert stats["min"][0] == pytest.approx(2.0)
+    assert stats["max"][0] == pytest.approx(4.0)
+    assert stats["iqr"][0] == pytest.approx(stats["q75"][0] - stats["q25"][0])
+    # Hodges-Lehmann pseudomedian of a symmetric sample equals its median
+    assert stats["pseudomedian"][0] == pytest.approx(3.0)
 
 
-def test_calculate_mean_log_frequency_all_missing():
-    mean, found, missing = calculate_mean_log_frequency(["zzz"], {"hello": 2.0})
-    assert mean is None
-    assert found == 0
-    assert missing == 1
+def test_get_transcript_word_frequency_none_when_no_words_match(tmp_runs, tmp_path):
+    path = _write_transcript(
+        tmp_path / INTERVIEW_NAME,
+        "PARTICIPANT: 00:00:01.000 zzznotaword\n",
+    )
+    stats = get_transcript_word_frequency(path, {"hello": 2.0}, speaker_role="PARTICIPANT")
+    assert stats is None
 
 
 def test_get_corpus_path_unknown_language(tmp_path):
@@ -174,6 +196,116 @@ def test_get_corpus_path_unknown_language(tmp_path):
 def test_get_corpus_path_missing_file(tmp_path):
     with pytest.raises(FileNotFoundError):
         get_corpus_path("en", tmp_path)
+
+
+# ---------------------------------------------------------------------------
+# extraction.utils.pragmatics / extraction.tag_pragmatic_feats
+# ---------------------------------------------------------------------------
+
+class _FakeSynset:
+    """WordNet synset stand-in with a fixed number of hypernym ancestors."""
+
+    def __init__(self, n_hypernyms: int):
+        self._n = n_hypernyms
+
+    def closure(self, fn):
+        return [object()] * self._n
+
+    def instance_hypernyms(self):
+        return []
+
+
+class _FakeWordnet:
+    """Maps word -> hypernym-ancestor count; unknown words have no synsets."""
+
+    def __init__(self, depths: dict[str, int]):
+        self.depths = depths
+
+    def synsets(self, word, pos=None):
+        if word in self.depths:
+            return [_FakeSynset(self.depths[word])]
+        return []
+
+
+class _DictLookup:
+    """Duck-typed SpecificityLookup backed by a plain score dict."""
+
+    def __init__(self, scores: dict[str, float]):
+        self.scores = scores
+
+    def lookup(self, word, pos=None, default=None):
+        return self.scores.get(word, default)
+
+
+def test_specificity_lookup_formula(monkeypatch):
+    from extraction.utils import pragmatics
+
+    # 'test' satisfies the WordNet-availability probe in __init__
+    fake_wn = _FakeWordnet({"test": 0, "dog": 9, "entity": 0})
+    monkeypatch.setattr(pragmatics, "wn", fake_wn)
+    pragmatics.SpecificityLookup._get_hypernym_depth.cache_clear()
+    try:
+        lookup = pragmatics.SpecificityLookup(pos="n")
+        # Specificity_3 = (1 + d) / max_depth
+        assert lookup.lookup("dog") == pytest.approx(10 / WN_MAX_DEPTH)
+        assert lookup.lookup("entity") == pytest.approx(1 / WN_MAX_DEPTH)
+        assert lookup.lookup("notaword") is None
+        assert lookup.lookup("notaword", default=0.0) == 0.0
+        assert "dog" in lookup
+        assert "notaword" not in lookup
+
+        normalized = pragmatics.SpecificityLookup(pos="n", normalized=True)
+        assert normalized.lookup("dog") == pytest.approx(5 * 10 / WN_MAX_DEPTH)
+    finally:
+        pragmatics.SpecificityLookup._get_hypernym_depth.cache_clear()
+
+
+def test_get_transcript_specificity_statistics(tmp_runs, tmp_path):
+    path = _write_transcript(
+        tmp_path / INTERVIEW_NAME,
+        "PARTICIPANT: 00:00:01.000 hello world again\n",
+    )
+    lookup = _DictLookup({"hello": 0.2, "world": 0.4, "again": 0.3})
+    stats = get_transcript_specificity(path, lookup, speaker_role="PARTICIPANT")
+    assert stats is not None
+    assert stats.columns == DISTRIBUTION_STATS
+    assert stats["n_words"][0] == 3
+    assert stats["mean"][0] == pytest.approx(0.3)
+    assert stats["median"][0] == pytest.approx(0.3)
+    assert stats["min"][0] == pytest.approx(0.2)
+    assert stats["max"][0] == pytest.approx(0.4)
+    assert stats["pseudomedian"][0] == pytest.approx(0.3)
+
+
+def test_get_transcript_specificity_none_when_no_words_scored(tmp_runs, tmp_path):
+    path = _write_transcript(
+        tmp_path / INTERVIEW_NAME,
+        "PARTICIPANT: 00:00:01.000 zzznotaword\n",
+    )
+    stats = get_transcript_specificity(path, _DictLookup({}), speaker_role="PARTICIPANT")
+    assert stats is None
+
+
+def test_ensure_tsv_columns_inserts_before_filename():
+    header = ["speaker_role", "ADJ", "file_name.txt"]
+    rows = [["Participant", "3", "a.txt"], ["Interviewer", "1", "a.txt"]]
+    new_header, new_rows = ensure_tsv_columns(header, rows, SPECIFICITY_COLUMNS)
+    insert_at = new_header.index("specificity_n_words")
+    assert new_header[:2] == ["speaker_role", "ADJ"]
+    assert new_header[-1] == "file_name.txt"
+    assert new_header[insert_at:insert_at + len(SPECIFICITY_COLUMNS)] == SPECIFICITY_COLUMNS
+    assert new_rows[0] == ["Participant", "3"] + [""] * len(SPECIFICITY_COLUMNS) + ["a.txt"]
+
+    # Idempotent when the columns already exist
+    assert ensure_tsv_columns(new_header, new_rows, SPECIFICITY_COLUMNS) == (new_header, new_rows)
+
+
+def test_update_row_with_stats_touches_only_named_columns():
+    header = ["speaker_role", "ADJ", "specificity_mean", "file_name.txt"]
+    row = ["Participant", "3", "", "a.txt"]
+    updated = update_row_with_stats(row, header, {"specificity_mean": 0.25, "unknown_col": 9})
+    assert updated == ["Participant", "3", "0.25", "a.txt"]
+    assert row[2] == ""  # original row unchanged
 
 
 # ---------------------------------------------------------------------------

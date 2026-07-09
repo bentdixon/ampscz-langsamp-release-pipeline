@@ -1,14 +1,17 @@
 # Feature Extraction
 
-Extracts morphosyntactic features from organized, labeled transcripts using Stanza NLP, and computes word-frequency measures against SUBTLEX corpora.
+Extracts morphosyntactic features from organized, labeled transcripts using Stanza NLP, computes word-frequency measures against SUBTLEX corpora, and computes pragmatic measures (word specificity via WordNet).
 
 ## Modules
 
 | File | Purpose |
 | --- | --- |
-| `tag_grammatical_feats.py` | Pipeline Step 1 entry point |
+| `extract_features.py` | Unified entry point dispatching to the grammatical or pragmatic tagger |
+| `tag_grammatical_feats.py` | Pipeline Step 1 entry point (grammatical features + word frequency) |
+| `tag_pragmatic_feats.py` | Pragmatic features (word specificity); runs after Step 1 on the same TSV |
 | `utils/grammar.py` | Stanza-based tallying of UPOS/XPOS tags, dependency relations, and morphological features per participant |
-| `utils/frequency.py` | Word-frequency calculation from SUBTLEX corpora (Polars-backed) |
+| `utils/frequency.py` | Word-frequency calculation from SUBTLEX corpora (Polars-backed) and shared distribution statistics |
+| `utils/pragmatics.py` | Word specificity (Bolognesi et al. 2020 Specificity 3) via WordNet hypernym depth |
 
 ## Step 1: Extract Grammatical Features
 
@@ -48,5 +51,22 @@ python extraction/tag_grammatical_feats.py --gpu 0
 - `speaker_role` - Participant or Interviewer
 - [Grammatical features] - UPOS tags, dependency relations, morphological features
 - `num_sent` - Number of sentences
-- `word_freq` - Mean log word frequency
+- `word_freq_<stat>` - Distribution statistics of per-word log frequency: `n_words`, `mean`, `std`, `min`, `q25`, `median`, `pseudomedian`, `q75`, `max`, `iqr`
 - `file_name.txt` - Transcript filename
+
+## Pragmatic Features: Word Specificity
+
+Scores every word spoken by each speaker role with the Bolognesi et al. (2020) Specificity 3 measure - `(1 + hypernym_count) / 20` from the WordNet noun taxonomy, so higher values mean more specific concepts - and summarizes the scores with the same distribution statistics as word frequency. Runs on CPU; WordNet data is downloaded automatically by NLTK on first use.
+
+By default it continues the current run: it reads the Step 1 features TSV, appends `specificity_<stat>` columns to the header, and writes the updated TSV back in place:
+
+```bash
+python extraction/tag_pragmatic_feats.py
+```
+
+**Options:**
+- `--i`, `--input-tsv`, `--o`, `--failed_log`, `--workspace`, `--slice`, `--skip_cleaning` - As in Step 1 (failed log defaults to `<run>/failed_pragmatics.csv`)
+- `--pos {n,v,a,r}` - WordNet part-of-speech for lookups (default: nouns)
+- `--normalized` - Report specificity on a 0-5 scale instead of the raw 0-1 scale
+
+Without an input TSV, it creates a standalone TSV containing the metadata and specificity columns.

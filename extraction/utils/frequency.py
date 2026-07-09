@@ -33,6 +33,49 @@ LANGUAGE_CORPUS_MAP = {
 }
 
 
+# Distribution statistics computed over per-word scores, in output order.
+# Each per-word measure stores one TSV column per statistic, prefixed with
+# the measure name (word_freq_<stat> here, specificity_<stat> in
+# extraction.utils.pragmatics): Step 0 builds its header from
+# WORD_FREQ_COLUMNS and the taggers inject matching keys into each tally dict.
+DISTRIBUTION_STATS = [
+    'n_words', 'mean', 'std', 'min', 'q25', 'median',
+    'pseudomedian', 'q75', 'max', 'iqr',
+]
+WORD_FREQ_COLUMNS = [f'word_freq_{stat}' for stat in DISTRIBUTION_STATS]
+
+
+def summarize_distribution(values: np.ndarray) -> pl.DataFrame:
+    """
+    Compute the DISTRIBUTION_STATS statistics over an array of per-word scores.
+
+    Returns a one-row DataFrame with one column per statistic.
+    """
+    q25 = np.percentile(values, 25)
+    q75 = np.percentile(values, 75)
+
+    stats = {
+        'n_words': len(values),
+        'mean': np.mean(values),
+        'std': np.std(values, ddof=1),  # Sample standard deviation
+        'min': np.min(values),
+        'q25': q25,
+        'median': np.median(values),
+        'pseudomedian': pseudomedian(values),
+        'q75': q75,
+        'max': np.max(values),
+        'iqr': q75 - q25,
+    }
+
+    return pl.DataFrame(
+        {stat: [stats[stat]] for stat in DISTRIBUTION_STATS},
+        schema={
+            stat: (pl.Int64 if stat == 'n_words' else pl.Float64)
+            for stat in DISTRIBUTION_STATS
+        },
+    )
+
+
 def get_corpus_path(language_code: str, corpus_dir: Path) -> Path:
     """
     Get the path to the corpus file for a given language.
@@ -171,9 +214,6 @@ def load_frequency_dict(filepath: Path, use_log: bool = True) -> dict[str, float
     return build_frequency_dict(freq_df, use_log=use_log)
 
 
-import re
-import polars as pl
-
 def extract_words_from_transcript(
         transcript: str,
         freq_dict: dict[str, float],
@@ -261,45 +301,7 @@ def get_transcript_word_frequency(
     if words is None or len(words) == 0:
         return None
 
-    # Convert frequency column to numpy array
-    freq_array = words['frequency'].to_numpy()
-
-    # Calculate all statistics
-    freq_mean = np.mean(freq_array)
-    freq_median = np.median(freq_array)
-    freq_std = np.std(freq_array, ddof=1)  # Sample standard deviation
-    freq_min = np.min(freq_array)
-    freq_max = np.max(freq_array)
-    freq_q25 = np.percentile(freq_array, 25)
-    freq_q75 = np.percentile(freq_array, 75)
-    freq_iqr = freq_q75 - freq_q25
-    freq_pseudomedian = pseudomedian(freq_array)
-    n_words = len(freq_array)
-
-    # Return combined DataFrame
-    return pl.DataFrame({
-        'n_words': [n_words],
-        'mean': [freq_mean],
-        'std': [freq_std],
-        'min': [freq_min],
-        'q25': [freq_q25],
-        'median': [freq_median],
-        'pseudomedian': [freq_pseudomedian],
-        'q75': [freq_q75],
-        'max': [freq_max],
-        'iqr': [freq_iqr],
-    }, schema={
-        'n_words': pl.Int64,
-        'mean': pl.Float64,
-        'std': pl.Float64,
-        'min': pl.Float64,
-        'q25': pl.Float64,
-        'median': pl.Float64,
-        'pseudomedian': pl.Float64,
-        'q75': pl.Float64,
-        'max': pl.Float64,
-        'iqr': pl.Float64,
-    })
+    return summarize_distribution(words['frequency'].to_numpy())
 
 
 if __name__ == "__main__":

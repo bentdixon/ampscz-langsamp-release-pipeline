@@ -25,6 +25,10 @@ from collections import defaultdict
 
 from common.transcripts import Transcript
 from common.langs import Language
+from extraction.utils.frequency import WORD_FREQ_COLUMNS
+
+# Tally-dict keys that are aggregate statistics rather than feature counts
+NON_FEATURE_LABELS = {'num_sent', 'num_words', 'word_freq', 'file_name', *WORD_FREQ_COLUMNS}
 
 # Languages with Stanza support
 SUPPORTED_STANZA_LANGUAGES = {'zh', 'es', 'en', 'ko', 'it', 'ja', 'da', 'de', 'fr', 'yue'}
@@ -154,10 +158,13 @@ def save_tags(
     keys = list(tally_tags_feat_dict.keys())
     first_key = keys[0]
 
-    # Get feature labels, renaming problematic ones
-    labels_original = list(tally_tags_feat_dict[first_key].keys())
+    # Get feature labels (statistics are appended separately), renaming problematic ones
+    feature_labels = [
+        label for label in tally_tags_feat_dict[first_key].keys()
+        if label not in NON_FEATURE_LABELS
+    ]
     labels_renamed = []
-    for label in labels_original:
+    for label in feature_labels:
         if label == '1':
             label = 'p1'
         elif label == '2':
@@ -171,7 +178,7 @@ def save_tags(
     header = [
                  'network', 'language', 'src_subject_id', 'interview_type',
                  'day', 'interview_number', 'transcript_speaker_label', 'speaker_role'
-             ] + labels_renamed[:-4] + ['num_sent', 'num_words', 'word_freq', 'file_name.txt']
+             ] + labels_renamed + ['num_sent', 'num_words'] + WORD_FREQ_COLUMNS + ['file_name.txt']
 
     # Ensure parent directories exist
     output_file.parent.mkdir(parents=True, exist_ok=True)
@@ -195,19 +202,19 @@ def save_tags(
             except KeyError:
                 language_name = language_code
 
-            # Build row values (excluding the last 4: num_sent, num_words, word_freq, file_name)
-            row_values = [str(features[label]) for label in labels_original[:-4]]
+            # Build row values
+            row_values = [str(features[label]) for label in feature_labels]
 
             # Get the trailing statistics
             num_sent = str(features['num_sent'])
             num_words = str(features['num_words'])
-            word_freq = str(features['word_freq'])
+            freq_values = [str(features.get(col, '')) for col in WORD_FREQ_COLUMNS]
             file_name = str(features['file_name'])
 
             row = [
                       site, language_name, patient_id, transcript_type,
                       day, session, '', speaker_role_output  # Empty string for transcript_speaker_label placeholder
-                  ] + row_values + [num_sent, num_words, word_freq, file_name]
+                  ] + row_values + [num_sent, num_words] + freq_values + [file_name]
 
             outfile.write('\t'.join(row) + '\n')
 
@@ -359,10 +366,13 @@ def save_tags_combined(
 
     first_key = list(first_tally_dict.keys())[0]
 
-    # Get feature labels, renaming problematic ones
-    labels_original = list(first_tally_dict[first_key].keys())
+    # Get feature labels (statistics are appended separately), renaming problematic ones
+    feature_labels = [
+        label for label in first_tally_dict[first_key].keys()
+        if label not in NON_FEATURE_LABELS
+    ]
     labels_renamed = []
-    for label in labels_original:
+    for label in feature_labels:
         if label == '1':
             label = 'p1'
         elif label == '2':
@@ -376,7 +386,7 @@ def save_tags_combined(
     header = [
                  'network', 'language', 'src_subject_id', 'interview_type',
                  'day', 'interview_number', 'transcript_speaker_label', 'speaker_role'
-             ] + labels_renamed[:-4] + ['num_sent', 'num_words', 'word_freq', 'file_name.txt']
+             ] + labels_renamed + ['num_sent', 'num_words'] + WORD_FREQ_COLUMNS + ['file_name.txt']
 
     # Ensure parent directories exist
     output_file.parent.mkdir(parents=True, exist_ok=True)
@@ -405,18 +415,18 @@ def save_tags_combined(
                     language_name = language_code
 
                 # Build row values
-                row_values = [str(features[label]) for label in labels_original[:-4]]
+                row_values = [str(features[label]) for label in feature_labels]
 
                 # Get trailing statistics
                 num_sent = str(features['num_sent'])
                 num_words = str(features['num_words'])
-                word_freq = str(features['word_freq'])
+                freq_values = [str(features.get(col, '')) for col in WORD_FREQ_COLUMNS]
                 file_name = str(features['file_name'])
 
                 row = [
                           site, language_name, patient_id, transcript_type,
                           day, session, '', speaker_role_output
-                      ] + row_values + [num_sent, num_words, word_freq, file_name]
+                      ] + row_values + [num_sent, num_words] + freq_values + [file_name]
 
                 outfile.write('\t'.join(row) + '\n')
 

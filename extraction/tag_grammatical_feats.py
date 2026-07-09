@@ -36,8 +36,7 @@ from extraction.utils.frequency import (
     get_corpus_path,
     calculate_frequencies_subtlex,
     build_frequency_dict,
-    extract_words_from_transcript,
-    get_transcript_word_frequency
+    get_transcript_word_frequency,
 )
 from common.transcripts import Transcript
 from common.langs import Language
@@ -88,12 +87,12 @@ def update_tsv_row_with_features(
     # Find indices of special columns
     try:
         num_sent_idx = header.index('num_sent')
-        word_freq_idx = header.index('word_freq')
     except ValueError as e:
         print(f"Warning: Missing expected column in header: {e}")
         return row
 
-    # Update feature columns
+    # Update feature columns; the word_freq_<stat> keys injected by the
+    # taggers fall through this loop and land in the matching header columns
     non_feature_labels = {'num_sent', 'word_freq', 'file_name'}
 
     for col_name, value in tally_dict.items():
@@ -105,7 +104,9 @@ def update_tsv_row_with_features(
 
     # Set aggregate statistics
     updated_row[num_sent_idx] = str(tally_dict.get('num_sent', ''))
-    updated_row[word_freq_idx] = str(tally_dict.get('word_freq', ''))
+    if 'word_freq' in header:
+        # Legacy TSVs with a single mean word-frequency column
+        updated_row[header.index('word_freq')] = str(tally_dict.get('word_freq', ''))
 
     return updated_row
 
@@ -188,14 +189,12 @@ def main() -> None:
     else:
         feature_list_path = (workspace.get_path("feats") if workspace else None) or DEFAULT_FEATS_FILE
 
-    # Parse word frequency arguments
     word_freq_langs = []
     if args.word_freq_langs:
         word_freq_langs = [lang.strip() for lang in args.word_freq_langs.split(',')]
 
     word_freq_dir = Path(args.word_freq_dir) if args.word_freq_dir else None
 
-    # Validate word frequency arguments
     if word_freq_langs and not word_freq_dir:
         print("Error: --word-freq-dir is required when --word-freq-langs is specified")
         return
@@ -375,7 +374,7 @@ def main() -> None:
             # ------------------------------------------------------------
             print("  Processing PARTICIPANT lines...")
 
-            # New: compute full frequency statistics using the improved function
+            # Compute all frequency statistics
             participant_freq_stats = None
             if freq_dict:
                 participant_freq_stats = get_transcript_word_frequency(
@@ -387,7 +386,7 @@ def main() -> None:
                     n_words = participant_freq_stats['n_words'][0]
                     print(f"    Word freq stats: mean={mean_val:.4f}, n_words={n_words}")
 
-            # Process linguistic features (no longer passing word_freq)
+            # Process linguistic features
             tally_dict, error_dict = process_transcript_lines(
                 transcript, nlp, tag_feat_dict, 'participant', lang_code
             )
@@ -410,7 +409,7 @@ def main() -> None:
             if not is_diary:
                 print("  Processing INTERVIEWER lines...")
 
-                # New: compute full frequency statistics
+                # Compute all frequency statistics
                 interviewer_freq_stats = None
                 if freq_dict:
                     interviewer_freq_stats = get_transcript_word_frequency(
@@ -421,7 +420,7 @@ def main() -> None:
                         n_words = interviewer_freq_stats['n_words'][0]
                         print(f"    Word freq stats: mean={mean_val:.4f}, n_words={n_words}")
 
-                # Process linguistic features (no word_freq argument)
+                # Process linguistic features
                 tally_dict, error_dict = process_transcript_lines(
                     transcript, nlp, tag_feat_dict, 'interviewer', lang_code
                 )

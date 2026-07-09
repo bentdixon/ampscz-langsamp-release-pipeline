@@ -12,6 +12,8 @@ import csv
 import sys
 from pathlib import Path
 
+import pytest
+
 from common.workspace import Workspace
 
 INTERVIEW_OK = "PronetPA_PA00001_interviewAudioTranscript_psychs_day0001_session0001.txt"
@@ -79,6 +81,18 @@ class ImmediateProcess:
         pass
 
 
+class FakeSpecificityLookup:
+    """WordNet-free stand-in scoring a fixed vocabulary."""
+
+    SCORES = {"good": 0.5, "today": 0.3, "week": 0.4}
+
+    def __init__(self, pos="n", normalized=False):
+        pass
+
+    def lookup(self, word, pos=None, default=None):
+        return self.SCORES.get(word, default)
+
+
 def fake_worker_process(rank, gpu_id, files_chunk, result_queue, model_name, thinking, batch_size):
     """Deterministic LLM verdicts: flags the PA00002 interview as OPEN."""
     mismatches = []
@@ -118,6 +132,17 @@ def test_full_pipeline_pass_through(tmp_runs, tmp_path, monkeypatch):
     (raw_dir / INTERVIEW_MISLABELED).write_text(INTERVIEW_TEXT, encoding="utf-8")
     (raw_dir / DIARY).write_text(DIARY_TEXT, encoding="utf-8")
 
+    # Minimal SUBTLEX-style corpus covering three participant words
+    corpus_dir = tmp_path / "corpora"
+    corpus_dir.mkdir()
+    (corpus_dir / "subtlex_en.csv").write_text(
+        "Word,FREQcount,Lg10WF\n"
+        "good,100,3.0\n"
+        "today,50,2.0\n"
+        "week,25,1.0\n",
+        encoding="utf-8",
+    )
+
     # ---- Step 0: organize, label, initialize TSV -------------------------
     import preprocessing.organize_label_and_init_tsv as step0
 
@@ -148,12 +173,19 @@ def test_full_pipeline_pass_through(tmp_runs, tmp_path, monkeypatch):
     assert {r["interview_type"] for r in rows} == {"psychs", "day0003"}
     assert all(r["language"] == "English" for r in rows)
     assert all(r["num_sent"] == "" for r in rows)
+    # The header carries one column per word-frequency statistic
+    assert "word_freq_mean" in rows[0]
+    assert "word_freq_pseudomedian" in rows[0]
+    assert "word_freq" not in rows[0]
 
     # ---- Step 1: extract grammatical features ----------------------------
     import extraction.tag_grammatical_feats as step1
 
     monkeypatch.setattr(step1.stanza, "Pipeline", FakeStanzaPipeline)
-    monkeypatch.setattr(sys, "argv", ["tag_grammatical_feats.py", "--gpu", "0"])
+    monkeypatch.setattr(sys, "argv", [
+        "tag_grammatical_feats.py", "--gpu", "0",
+        "--word-freq-langs", "en", "--word-freq-dir", str(corpus_dir),
+    ])
     step1.main()
 
     ws = Workspace.load_latest()
@@ -170,8 +202,17 @@ def test_full_pipeline_pass_through(tmp_runs, tmp_path, monkeypatch):
     # "I am feeling quite good today." + "The week was long and busy." = 12
     assert participant["num_sent"] == "2"
     assert int(participant["ADJ"]) == 12
+    # Word-frequency statistics reach the output TSV: the corpus matches
+    # "good" (3.0), "today" (2.0), and "week" (1.0) in the participant lines
+    assert participant["word_freq_n_words"] == "3"
+    assert float(participant["word_freq_mean"]) == pytest.approx(2.0)
+    assert float(participant["word_freq_median"]) == pytest.approx(2.0)
+    assert float(participant["word_freq_pseudomedian"]) == pytest.approx(2.0)
     interviewer = by_key[(INTERVIEW_OK, "Interviewer")]
     assert interviewer["num_sent"] == "2"
+    # Interviewer lines match only "today" and "week"
+    assert interviewer["word_freq_n_words"] == "2"
+    assert float(interviewer["word_freq_mean"]) == pytest.approx(1.5)
 
     # The diary has no PARTICIPANT-labeled lines, so it must land in the
     # failed log (which defaults into the run directory) rather than crash
@@ -179,6 +220,36 @@ def test_full_pipeline_pass_through(tmp_runs, tmp_path, monkeypatch):
     assert failed_log.exists()
     failed_rows = list(csv.DictReader(open(failed_log, encoding="utf-8")))
     assert any(DIARY in r["filename"] for r in failed_rows)
+
+    # ---- Step 1b: pragmatic features (word specificity) -------------------
+    import extraction.tag_pragmatic_feats as step1b
+
+    monkeypatch.setattr(step1b, "SpecificityLookup", FakeSpecificityLookup)
+    monkeypatch.setattr(sys, "argv", ["tag_pragmatic_feats.py"])
+    step1b.main()
+
+    ws = Workspace.load_latest()
+    assert "pragmatics" in ws.get("completed")
+    rows = _read_tsv(ws.get_path("features_tsv"))
+    assert len(rows) == 5
+    by_key = {(r["file_name.txt"], r["speaker_role"]): r for r in rows}
+    participant = by_key[(INTERVIEW_OK, "Participant")]
+    # Scorable participant words: good (0.5), today (0.3), week (0.4)
+    assert participant["specificity_n_words"] == "3"
+    assert float(participant["specificity_mean"]) == pytest.approx(0.4)
+    assert float(participant["specificity_pseudomedian"]) == pytest.approx(0.4)
+    # Grammatical and frequency columns from Step 1 must survive
+    assert int(participant["ADJ"]) == 12
+    assert participant["num_sent"] == "2"
+    assert float(participant["word_freq_mean"]) == pytest.approx(2.0)
+    interviewer = by_key[(INTERVIEW_OK, "Interviewer")]
+    # Scorable interviewer words: today (0.3), week (0.4)
+    assert interviewer["specificity_n_words"] == "2"
+    assert float(interviewer["specificity_mean"]) == pytest.approx(0.35)
+    # Diaries fall back to all lines: "today" is the only scorable word
+    diary = by_key[(DIARY, "Participant")]
+    assert diary["specificity_n_words"] == "1"
+    assert float(diary["specificity_mean"]) == pytest.approx(0.3)
 
     # ---- Step 2: verify labels (mock LLM verdicts), then fix -------------
     import postprocessing.verify_and_fix_interview_labels as step2
