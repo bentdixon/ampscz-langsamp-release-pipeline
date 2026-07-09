@@ -12,6 +12,7 @@ import numpy as np
 import polars as pl
 from pathlib import Path
 from typing import Optional
+from pseudomedian import pseudomedian
 
 from common.transcripts import Transcript
 
@@ -170,21 +171,29 @@ def load_frequency_dict(filepath: Path, use_log: bool = True) -> dict[str, float
     return build_frequency_dict(freq_df, use_log=use_log)
 
 
+import re
+import polars as pl
+
 def extract_words_from_transcript(
-        transcript: Transcript,
+        transcript: str,
+        freq_dict: dict[str, float],
         speaker_role: str = "PARTICIPANT",
-) -> list[str]:
+) -> pl.DataFrame | None:
     """
     Extract words from a transcript for a specific speaker role.
     Falls back to all lines if no matching lines exist (e.g., diaries).
 
     Args:
-        transcript: Transcript object
+        transcript: Transcript string
+        freq_dict: Dictionary mapping words to their frequencies
         speaker_role: "PARTICIPANT" or "INTERVIEWER"
 
     Returns:
-        List of lowercase words from specified speaker's lines
+        DataFrame with columns 'word' (str) and 'frequency' (float64),
+        or None if no words are found
     """
+    transcript = Transcript(transcript)  # Re-cast the string to become a Transcript object
+
     words = []
 
     if speaker_role == "INTERVIEWER":
@@ -198,67 +207,34 @@ def extract_words_from_transcript(
         cleaned = re.sub(r'[^\w\s]', '', text.lower())
         words.extend(cleaned.split())
 
-    return words
-
-
-def extract_words_from_file(
-        filepath: Path,
-        speaker_role: str = "PARTICIPANT",
-) -> list[str]:
-    """
-    Extract words from a transcript file for a specific speaker role.
-
-    Args:
-        filepath: Path to transcript file
-        speaker_role: "PARTICIPANT" or "INTERVIEWER"
-
-    Returns:
-        List of lowercase words from specified speaker's lines
-    """
-    transcript = Transcript(filepath)
-    return extract_words_from_transcript(transcript, speaker_role)
-
-
-def calculate_mean_log_frequency(
-        words: list[str],
-        freq_dict: dict[str, float],
-) -> tuple[float | None, int, int]:
-    """
-    Calculate mean log frequency for a list of words.
-
-    Args:
-        words: List of words to look up
-        freq_dict: Dictionary mapping word -> log frequency
-
-    Returns:
-        Tuple of (mean_log_frequency, words_found, words_missing)
-        Returns (None, 0, len(words)) if no words are found in dictionary
-    """
     frequencies = []
     words_missing = 0
 
     for word in words:
         if word in freq_dict:
-            frequencies.append(freq_dict[word])
+            frequencies.append((word, freq_dict[word]))
         else:
             words_missing += 1
 
     words_found = len(frequencies)
 
     if words_found == 0:
-        return None, 0, words_missing
+        return None
 
-    mean_freq = np.mean(frequencies)
-    return float(mean_freq), words_found, words_missing
+    return pl.DataFrame(
+        frequencies,
+        schema={'word': pl.Utf8, 'frequency': pl.Float64},
+        orient='row'
+    )
 
 
 def get_transcript_word_frequency(
         filepath: Path,
         freq_dict: dict[str, float],
         speaker_role: str = "PARTICIPANT",
-) -> tuple[float | None, int, int]:
+) -> pl.DataFrame | None:
     """
-    Calculate mean word frequency for a transcript file.
+    Calculate word frequency statistics for a transcript file.
 
     Args:
         filepath: Path to transcript file
@@ -266,10 +242,64 @@ def get_transcript_word_frequency(
         speaker_role: "PARTICIPANT" or "INTERVIEWER"
 
     Returns:
-        Tuple of (mean_log_frequency, words_found, words_missing)
+        DataFrame with frequency statistics:
+        - n_words: number of words found
+        - mean: mean frequency
+        - std: standard deviation
+        - min: minimum frequency
+        - q25: 25th percentile
+        - median: median frequency
+        - pseudomedian: pseudomedian (median of pairwise means)
+        - q75: 75th percentile
+        - max: maximum frequency
+        - iqr: interquartile range
     """
-    words = extract_words_from_file(filepath, speaker_role)
-    return calculate_mean_log_frequency(words, freq_dict)
+    words: pl.DataFrame = extract_words_from_transcript(
+        filepath, freq_dict, speaker_role
+    )
+
+    if words is None or len(words) == 0:
+        return None
+
+    # Convert frequency column to numpy array
+    freq_array = words['frequency'].to_numpy()
+
+    # Calculate all statistics
+    freq_mean = np.mean(freq_array)
+    freq_median = np.median(freq_array)
+    freq_std = np.std(freq_array, ddof=1)  # Sample standard deviation
+    freq_min = np.min(freq_array)
+    freq_max = np.max(freq_array)
+    freq_q25 = np.percentile(freq_array, 25)
+    freq_q75 = np.percentile(freq_array, 75)
+    freq_iqr = freq_q75 - freq_q25
+    freq_pseudomedian = pseudomedian(freq_array)
+    n_words = len(freq_array)
+
+    # Return combined DataFrame
+    return pl.DataFrame({
+        'n_words': [n_words],
+        'mean': [freq_mean],
+        'std': [freq_std],
+        'min': [freq_min],
+        'q25': [freq_q25],
+        'median': [freq_median],
+        'pseudomedian': [freq_pseudomedian],
+        'q75': [freq_q75],
+        'max': [freq_max],
+        'iqr': [freq_iqr],
+    }, schema={
+        'n_words': pl.Int64,
+        'mean': pl.Float64,
+        'std': pl.Float64,
+        'min': pl.Float64,
+        'q25': pl.Float64,
+        'median': pl.Float64,
+        'pseudomedian': pl.Float64,
+        'q75': pl.Float64,
+        'max': pl.Float64,
+        'iqr': pl.Float64,
+    })
 
 
 if __name__ == "__main__":

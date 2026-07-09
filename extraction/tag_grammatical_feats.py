@@ -37,7 +37,7 @@ from extraction.utils.frequency import (
     calculate_frequencies_subtlex,
     build_frequency_dict,
     extract_words_from_transcript,
-    calculate_mean_log_frequency,
+    get_transcript_word_frequency
 )
 from common.transcripts import Transcript
 from common.langs import Language
@@ -241,7 +241,6 @@ def main() -> None:
             print(f"Error: Required column not found in TSV: {e}")
             return
 
-        # Build list of files to process
         files_to_process = set()
         for row in rows:
             filename = row[filename_idx]
@@ -368,50 +367,71 @@ def main() -> None:
 
             filename = transcript.filename.name
 
-            # Calculate word frequencies if language is in freq_dicts_by_lang
+            # Get a frequency dictionary for this language
             freq_dict = freq_dicts_by_lang.get(lang_code)
 
-            # Process participant lines
+            # ------------------------------------------------------------
+            # Process PARTICIPANT
+            # ------------------------------------------------------------
             print("  Processing PARTICIPANT lines...")
 
-            # Calculate word frequency for participant if available
-            participant_word_freq = None
+            # New: compute full frequency statistics using the improved function
+            participant_freq_stats = None
             if freq_dict:
-                words = extract_words_from_transcript(transcript, speaker_role='PARTICIPANT')
-                participant_word_freq, words_found, words_missing = calculate_mean_log_frequency(words, freq_dict)
-                if participant_word_freq:
-                    coverage = words_found / (words_found + words_missing) * 100 if words_found + words_missing > 0 else 0
-                    print(f"    Word frequency: {participant_word_freq:.4f} (coverage: {coverage:.1f}%)")
+                participant_freq_stats = get_transcript_word_frequency(
+                    transcript.full_path, freq_dict, speaker_role='PARTICIPANT'
+                )
+                if participant_freq_stats is not None:
+                    # Print a concise summary
+                    mean_val = participant_freq_stats['mean'][0]
+                    n_words = participant_freq_stats['n_words'][0]
+                    print(f"    Word freq stats: mean={mean_val:.4f}, n_words={n_words}")
 
+            # Process linguistic features (no longer passing word_freq)
             tally_dict, error_dict = process_transcript_lines(
-                transcript, nlp, tag_feat_dict, 'participant', lang_code, word_freq=participant_word_freq
+                transcript, nlp, tag_feat_dict, 'participant', lang_code
             )
 
             if tally_dict:
+                # Inject all frequency statistics into the tally dictionary
+                if participant_freq_stats is not None:
+                    for col in participant_freq_stats.columns:
+                        tally_dict[f'word_freq_{col}'] = participant_freq_stats[col][0]
+
                 results_by_file_and_role[(filename, 'Participant')] = tally_dict
                 print(f"    Participant: {tally_dict['num_sent']} sentences processed")
             elif error_dict:
                 failed_files.append(error_dict)
                 print(f"    Participant: Failed - {error_dict['reason']}")
 
-            # Process interviewer lines (skip for diaries)
+            # ------------------------------------------------------------
+            # Process INTERVIEWER (skip for diaries)
+            # ------------------------------------------------------------
             if not is_diary:
                 print("  Processing INTERVIEWER lines...")
 
-                # Calculate word frequency for interviewer if available
-                interviewer_word_freq = None
+                # New: compute full frequency statistics
+                interviewer_freq_stats = None
                 if freq_dict:
-                    words = extract_words_from_transcript(transcript, speaker_role='INTERVIEWER')
-                    interviewer_word_freq, words_found, words_missing = calculate_mean_log_frequency(words, freq_dict)
-                    if interviewer_word_freq:
-                        coverage = words_found / (words_found + words_missing) * 100 if words_found + words_missing > 0 else 0
-                        print(f"    Word frequency: {interviewer_word_freq:.4f} (coverage: {coverage:.1f}%)")
+                    interviewer_freq_stats = get_transcript_word_frequency(
+                        transcript.full_path, freq_dict, speaker_role='INTERVIEWER'
+                    )
+                    if interviewer_freq_stats is not None:
+                        mean_val = interviewer_freq_stats['mean'][0]
+                        n_words = interviewer_freq_stats['n_words'][0]
+                        print(f"    Word freq stats: mean={mean_val:.4f}, n_words={n_words}")
 
+                # Process linguistic features (no word_freq argument)
                 tally_dict, error_dict = process_transcript_lines(
-                    transcript, nlp, tag_feat_dict, 'interviewer', lang_code, word_freq=interviewer_word_freq
+                    transcript, nlp, tag_feat_dict, 'interviewer', lang_code
                 )
 
                 if tally_dict:
+                    # Inject frequency statistics
+                    if interviewer_freq_stats is not None:
+                        for col in interviewer_freq_stats.columns:
+                            tally_dict[f'word_freq_{col}'] = interviewer_freq_stats[col][0]
+
                     results_by_file_and_role[(filename, 'Interviewer')] = tally_dict
                     print(f"    Interviewer: {tally_dict['num_sent']} sentences processed")
                 elif error_dict:
